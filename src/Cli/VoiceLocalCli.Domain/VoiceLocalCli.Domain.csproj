@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Domain core: the Base Class Library only. This project deliberately has NO
+    PackageReference and NO ProjectReference. Dependencies point inwards; nothing points
+    out of the domain. VoiceLocalCli.Architecture.Tests fails the build if this project
+    ever gains an outward dependency.
+  -->
+
+</Project>
