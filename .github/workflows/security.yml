@@ -1,0 +1,69 @@
+name: Security
+
+# Defense-in-depth: .gitignore already excludes secrets and local/per-machine state, but
+# these gates catch what slips through (including in history) and known-vulnerable
+# dependencies, on every PR and push to main.
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # scan history, not just the current tree
+
+      - name: Install gitleaks
+        # Upstream CLI directly, not gitleaks/gitleaks-action@v2 (avoids that action's
+        # dependency on a GITLEAKS_LICENSE org secret). Pinned and SHA256-verified before
+        # it's unpacked or run -- supply-chain integrity for a security gate itself.
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+
+      - name: Run gitleaks (secret scan)
+        run: ./gitleaks detect --source . --redact --exit-code 1
+
+  trivy:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Generate NuGet lock files (so Trivy sees .NET dependencies)
+        # Without packages.lock.json, `trivy fs` finds no NuGet dependencies and this gate
+        # is a silent no-op.
+        run: dotnet restore VoiceLocalCli.slnx -p:RestorePackagesWithLockFile=true
+
+      - name: Run Trivy (filesystem scan)
+        # Covers both the .NET lock files above and src/engine's pyproject.toml --
+        # a fresh CRITICAL/HIGH finding with a known fix fails this job.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true

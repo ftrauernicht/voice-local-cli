@@ -1,0 +1,43 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "enabledManagers": ["pip_requirements", "pep621", "nuget", "github-actions"],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions dependencies"
+    },
+    {
+      "matchManagers": ["nuget"],
+      "groupName": ".NET dependencies"
+    },
+    {
+      "matchManagers": ["pip_requirements", "pep621"],
+      "groupName": "Python dependencies"
+    },
+    {
+      "matchPackageNames": [
+        "faster-whisper",
+        "pyannote.audio",
+        "openvino",
+        "openvino-genai",
+        "optimum-intel",
+        "transformers",
+        "torchaudio",
+        "webrtcvad-wheels"
+      ],
+      "groupName": "ML/model-runtime dependencies",
+      "minimumReleaseAge": "3 days"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  }
+}

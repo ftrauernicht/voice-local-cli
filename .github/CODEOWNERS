@@ -1,0 +1,8 @@
+# CODEOWNERS -- enforces review from the listed owner(s) on every PR to main.
+#
+# Enforcement requires branch protection to have "Require review from Code Owners"
+# enabled (see docs/ci/branch-protection.md) -- this file alone does not block merges.
+# While this is a solo project, the owner is the sole reviewer by necessity; add a second
+# name here the day a co-maintainer joins, so the author is never their own only reviewer.
+
+* @ftrauernicht

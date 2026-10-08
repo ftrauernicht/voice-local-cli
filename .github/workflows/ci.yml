@@ -1,0 +1,140 @@
+name: CI
+
+# One gate workflow covering all three languages in this repo. Jobs run unconditionally on
+# every trigger -- not path-filtered. Path-filtering is tempting (only run python-ci if
+# src/engine/** changed) but risky for a coverage gate: a stale/skipped job can leave a
+# green check that never actually re-validated the threshold. Revisit once the repo is
+# public and Actions minutes stop being a scarce resource -- not before.
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python-ci:
+    name: Python (lint + tests + coverage)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/engine
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install the engine package + dev extras
+        # NOT the gpu extra: no Intel GPU on a hosted runner, and importing openvino_genai
+        # at collection time would need it. is_available()/ensure_model() are mocked in
+        # tests instead of relying on real GPU packages being importable.
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Tests + coverage
+        # Coverage config (branch, source, fail_under=85, exclusions) lives in
+        # pyproject.toml, not duplicated here -- see [tool.coverage.*].
+        run: pytest --cov --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: python-coverage
+          path: src/engine/coverage.xml
+          retention-days: 30
+
+  dotnet-ci:
+    name: .NET (build + tests + coverage)
+    runs-on: windows-latest  # the orchestrator's real target platform (Process/Win32 interop)
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68  # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore VoiceLocalCli.slnx
+
+      - name: Build (Release)
+        run: dotnet build VoiceLocalCli.slnx -c Release --no-restore
+
+      - name: Test + coverage threshold (>=85% line coverage)
+        # coverlet.msbuild (referenced by the test projects) enforces the threshold itself
+        # via these MSBuild properties -- `dotnet test` exits non-zero if coverage falls
+        # under 85%, no separate script needed. Per-language gate, not blended with
+        # Python's -- see docs/ci/branch-protection.md for why two independently-
+        # defensible 85% gates beat one averaged number.
+        run: >
+          dotnet test VoiceLocalCli.slnx -c Release --no-build
+          /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura
+          /p:CoverletOutput=../../coverage/ /p:MergeWith=../../coverage/coverage.json
+          /p:Threshold=85 /p:ThresholdType=line /p:ThresholdStat=total
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: dotnet-coverage
+          path: coverage/**
+          retention-days: 30
+
+  powershell-analyze:
+    name: PowerShell (PSScriptAnalyzer)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Run PSScriptAnalyzer
+        # Run inline rather than via microsoft/psscriptanalyzer-action -- that action shows
+        # signs of being under-maintained (unresolved issues/PRs, stale template content in
+        # its own README). A few lines here give the same result with one less third-party
+        # action to keep pinned and trust.
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning, Error
+          $results | Format-Table -AutoSize
+          if ($results | Where-Object Severity -eq 'Error') {
+            Write-Error "PSScriptAnalyzer found error-severity issues."
+            exit 1
+          }
+
+  coverage-gate-summary:
+    name: Coverage summary
+    needs: [python-ci, dotnet-ci]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "## Coverage gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Python: ${{ needs.python-ci.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- .NET: ${{ needs.dotnet-ci.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Each language's 85% gate is enforced inside its own job (pytest --cov-fail-under / the .NET coverage-threshold step above) -- this step is a human-readable summary only, it never masks a failing gate." >> "$GITHUB_STEP_SUMMARY"
