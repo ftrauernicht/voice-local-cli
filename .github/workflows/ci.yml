@@ -83,24 +83,44 @@ jobs:
       - name: Build (Release)
         run: dotnet build VoiceLocalCli.slnx -c Release --no-restore
 
-      - name: Test + coverage threshold (>=85% line coverage)
-        # coverlet.msbuild (referenced by the test projects) enforces the threshold itself
-        # via these MSBuild properties -- `dotnet test` exits non-zero if coverage falls
-        # under 85%, no separate script needed. Per-language gate, not blended with
-        # Python's -- see docs/ci/branch-protection.md for why two independently-
-        # defensible 85% gates beat one averaged number.
+      - name: Test + coverage
+        # Microsoft.Testing.Extensions.CodeCoverage (the Microsoft.Testing.Platform-native
+        # collector), not coverlet.msbuild -- coverlet's /p:CollectCoverage hooks into
+        # classic VSTest and silently breaks test discovery against an MTP-based xUnit v3
+        # project ("Zero tests ran", exit code 5, no pointer to the real cause -- found by
+        # running this exact command locally, not assumed). See tests/Cli.Tests/TESTING.md.
+        #
+        # Passing the same --coverage-output filename for the whole solution merges both
+        # test projects' hit data into one report instead of two separate per-project
+        # files -- verified directly, not documented behavior to take on faith.
         run: >
           dotnet test VoiceLocalCli.slnx -c Release --no-build
-          /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura
-          /p:CoverletOutput=../../coverage/ /p:MergeWith=../../coverage/coverage.json
-          /p:Threshold=85 /p:ThresholdType=line /p:ThresholdStat=total
+          --coverage --coverage-output-format cobertura
+          --coverage-output coverage.cobertura.xml
+          --coverage-settings tests/Cli.Tests/coverage.config
+
+      - name: Enforce the 85% line-coverage gate
+        # No built-in --coverage threshold flag on this collector (unlike coverlet's old
+        # /p:Threshold) -- read the line-rate the previous step produced and fail here
+        # instead. Per-language gate, not blended with Python's -- see
+        # docs/ci/branch-protection.md for why two independently-defensible 85% gates beat
+        # one averaged number.
+        shell: pwsh
+        run: |
+          [xml]$report = Get-Content TestResults/coverage.cobertura.xml
+          $pct = [double]$report.coverage.'line-rate' * 100
+          Write-Host "Line coverage: $([math]::Round($pct, 2))% (gate: 85%)"
+          if ($pct -lt 85) {
+            Write-Error "Coverage $([math]::Round($pct, 2))% is below the 85% gate."
+            exit 1
+          }
 
       - name: Upload coverage artifact
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: dotnet-coverage
-          path: coverage/**
+          path: TestResults/coverage.cobertura.xml
           retention-days: 30
 
   powershell-analyze:

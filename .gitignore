@@ -20,10 +20,12 @@ recordings/
 *.dictate.txt
 *.live.txt
 
-# .NET (populated once WP3 scaffolds src/Cli)
+# .NET
 **/bin/
 **/obj/
 *.user
+TestResults/
+coverage/
 
 # Editor/OS noise
 .vs/

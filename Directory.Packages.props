@@ -3,15 +3,17 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
-
   <!-- Console UI — referenced by VoiceLocalCli.Ui.Console only (enforced by an architecture test). -->
   <ItemGroup>
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
   </ItemGroup>
-
-  <!-- Test stack: xUnit v3 (Microsoft.Testing.Platform) + NSubstitute for the IProcessLauncher fakes. -->
+  <!-- Test stack: xUnit v3 (Microsoft.Testing.Platform) + NSubstitute for the IProcessLauncher fakes.
+       Microsoft.Testing.Extensions.CodeCoverage is the MTP-native coverage collector — NOT
+       coverlet.msbuild, which hooks into classic VSTest and silently breaks test discovery
+       against an MTP-based xUnit v3 project (see tests/Cli.Tests/TESTING.md). -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
