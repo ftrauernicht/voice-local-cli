@@ -1,0 +1,25 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- Original artwork, hand-drawn as plain shapes: no third-party icon assets, so
+       nothing to track in NOTICE. GitHub-dark palette, matching DictationView's accent.
+       (No literal double hyphen in this comment: that breaks XML parsing, the same
+       gotcha documented in tests/Cli.Tests/coverage.config.) -->
+  <rect width="256" height="256" rx="56" fill="#0D1117" />
+
+  <!-- Waveform bars flanking the microphone, opacity falling off with distance: a simple
+       "local audio activity" cue rather than a literal sound wave. -->
+  <g fill="#58A6FF">
+    <rect x="44" y="84" width="12" height="32" rx="6" opacity="0.45" />
+    <rect x="64" y="68" width="12" height="64" rx="6" opacity="0.7" />
+    <rect x="84" y="80" width="12" height="40" rx="6" opacity="1" />
+
+    <rect x="160" y="80" width="12" height="40" rx="6" opacity="1" />
+    <rect x="180" y="68" width="12" height="64" rx="6" opacity="0.7" />
+    <rect x="200" y="84" width="12" height="32" rx="6" opacity="0.45" />
+  </g>
+
+  <!-- Microphone: capsule + cradle arc + stand, the classic glyph reduced to its outline. -->
+  <rect x="104" y="56" width="48" height="88" rx="24" fill="#58A6FF" />
+  <path d="M 88 120 a 40 40 0 0 0 80 0" stroke="#58A6FF" stroke-width="10" fill="none" stroke-linecap="round" />
+  <line x1="128" y1="160" x2="128" y2="184" stroke="#58A6FF" stroke-width="10" stroke-linecap="round" />
+  <line x1="104" y1="184" x2="152" y2="184" stroke="#58A6FF" stroke-width="10" stroke-linecap="round" />
+</svg>
