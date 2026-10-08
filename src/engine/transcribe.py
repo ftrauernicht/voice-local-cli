@@ -196,6 +196,7 @@ def main() -> None:
 
     hotwords = _hotwords.load_hotword_string()
 
+    c.state("transcribing_full")
     if use_gpu:
         c.info(f"Transcribing {args.audio.name} via GPU (OpenVINO) + Forced Alignment ...")
         segments, words = transcribe_gpu(args.audio, args.language, hotwords)
@@ -209,6 +210,7 @@ def main() -> None:
         if not hf_token:
             c.warn("HF_TOKEN not set -- skipping speaker diarization. See README.md.")
         else:
+            c.state("diarizing_speakers")
             c.info("Running speaker diarization ...")
             try:
                 turns = diarize(args.audio, hf_token)
@@ -231,6 +233,7 @@ def main() -> None:
                 ts = f"{int(seg['start'] // 60):02d}:{int(seg['start'] % 60):02d}"
                 f.write(f"{ts} {seg['text']}\n")
 
+    c.state("finished", output=str(out_path))
     c.ok(f"Done: {out_path}")
 
 

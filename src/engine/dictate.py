@@ -96,6 +96,7 @@ def process_and_type(
     if samples.size == 0 or np.abs(samples).max() < 0.01:
         return None  # practically silence, don't bother the model
 
+    c.state("transcribing")
     text = transcribe(samples)
     if not text:
         return None
@@ -106,9 +107,11 @@ def process_and_type(
     out_file.flush()
 
     if window_now != window_before:
+        c.state("focus_mismatch", expected=window_before, actual=window_now, text=text)
         c.warn(f"{ts} Focus changed ('{window_before}' -> '{window_now}') -- NOT typed, only logged: {text}")
     else:
         print(f"{ts} [{window_now}] {text}")
+        c.state("typing", window=window_now)
         pyautogui.write(text + " ", interval=0.01)
     sys.stdout.flush()
     return text
@@ -183,6 +186,7 @@ def main() -> None:
     c.info("Typing happens WITHOUT an automatic Enter -- you confirm/run it yourself.\n")
 
     window_before = active_window_title()
+    c.state("listening")
 
     with out_path.open("w", encoding="utf-8") as out_file:
         while True:
@@ -225,6 +229,7 @@ def main() -> None:
                 processed_frames = scanned_frames = silence_run = 0
                 had_speech = False
                 window_before = active_window_title()
+                c.state("listening")
                 continue
 
             # Read and classify newly available full VAD frames
@@ -254,7 +259,9 @@ def main() -> None:
                 had_speech = False
                 silence_run = 0
                 window_before = active_window_title()
+                c.state("listening")
 
+    c.state("finished")
     c.ok("Dictation finished.")
     review_hotword_candidates(session_texts)
 

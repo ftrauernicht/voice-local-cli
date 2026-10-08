@@ -124,6 +124,7 @@ def main() -> None:
     margin_frames = int(TRAILING_MARGIN_SECONDS * SAMPLE_RATE)
 
     c.info(f"Live transcript running ({args.interval:.0f}s chunks) -> {out_path}\n")
+    c.state("recording")
 
     with out_path.open("w", encoding="utf-8") as out_file:
         while True:
@@ -151,8 +152,10 @@ def main() -> None:
             if samples.size == 0 or np.abs(samples).max() < 0.01:
                 continue  # practically silence, don't bother the model
 
+            c.state("transcribing_chunk")
             text = transcribe(samples)
             if not text:
+                c.state("recording")
                 continue
 
             line = f"{time.strftime('%H:%M:%S')} {text}"
@@ -160,7 +163,9 @@ def main() -> None:
             sys.stdout.flush()
             out_file.write(line + "\n")
             out_file.flush()
+            c.state("recording")
 
+    c.state("finished")
     c.ok("Live transcript finished.")
 
 
