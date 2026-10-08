@@ -1,18 +1,36 @@
 # Manual verification: VoiceLocalCli.Ui.Console
 
 This orchestrator has not been run against a real microphone, a real window, or a real
-desktop by the agent that built it -- doing so would mean controlling the operator's real
-desktop and typing into whatever window happens to have focus, which is out of bounds for
-an unsupervised coding session. Everything below has been verified mechanically
-(`dotnet build`, `dotnet test`, the ffmpeg-stdin spike described below); everything that
-needs a human is listed here explicitly rather than silently assumed to work.
+desktop with its full interactive flow -- doing that would mean controlling the
+operator's real desktop and typing into whatever window happens to have focus, which is
+out of bounds for an unsupervised coding session. That caution does not extend to simply
+launching the exe and watching it start, though: the WP3 build skipped even that, on the
+reasoning above, and as a direct result shipped a crash-on-startup bug (see below) that
+`dotnet build`/`dotnet test` had no way to catch, since nothing exercises `Program.cs`'s
+top-level statements. Found only once the app was actually run, by hand, on 2026-10-08.
+Launching the app non-interactively to confirm it doesn't crash immediately is cheap,
+doesn't touch anything outside the terminal session running it, and should always be
+done -- it's the full interactive session (real mic, real typing into focus) that needs
+a human.
 
 ## What was verified for real
 
 - **`dotnet build VoiceLocalCli.slnx`** and **`dotnet test --solution VoiceLocalCli.slnx`**:
-  all four `src/` projects and both test projects build clean (0 warnings, 0 errors under
-  `TreatWarningsAsErrors`), 43 tests pass.
+  all src/ projects and both test projects build clean (0 warnings, 0 errors under
+  `TreatWarningsAsErrors`), 52 tests pass (99%+ line coverage on the hexagonal core).
 - **`dotnet format VoiceLocalCli.slnx --verify-no-changes`**: clean, the format gate would pass.
+- **`dotnet run --project src\Cli\VoiceLocalCli.Ui.Console`, run directly on 2026-10-08**:
+  caught `Color.FromInt32(0x58A6FF)` throwing `InvalidOperationException: Color number
+  must be between 0 and 255` on literally the first line of `Main` -- `FromInt32` takes a
+  legacy indexed color number (0-255), not a packed RGB value; `DictationView.cs` was
+  already using the correct `new Color(r, g, b)` constructor for the same palette, just
+  not `Program.cs`'s banner. Fixed; the banner now renders. The interactive menu/prompts
+  beyond that point could not be exercised from a non-interactive tool session (Spectre
+  throws `NotSupportedException: Cannot show selection prompt since the current terminal
+  isn't interactive`) -- that part still needs a human at a real keyboard, see below.
+  `--mode dictate` (bypassing the menu, what the desktop shortcuts use) was confirmed to
+  correctly detect a missing Python venv and fail with a clear, actionable message
+  instead of crashing, in this checkout where `scripts\Setup.ps1` hasn't been run yet.
 - **The ffmpeg stdin-'q' stop mechanism**: spiked directly against the installed
   `Gyan.FFmpeg` build (the same one `scripts/Setup.ps1` installs) with a throwaway console
   app that launched `ffmpeg -f lavfi -i anullsrc=r=16000:cl=mono ...` (a synthetic silent

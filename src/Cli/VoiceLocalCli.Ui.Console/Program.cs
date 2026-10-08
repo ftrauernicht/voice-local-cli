@@ -5,7 +5,7 @@ using VoiceLocalCli.Domain;
 using VoiceLocalCli.Infrastructure;
 using VoiceLocalCli.Ui.Console;
 
-AnsiConsole.Write(new FigletText("voice-local-cli").Color(Color.FromInt32(0x58A6FF)));
+AnsiConsole.Write(new FigletText("voice-local-cli").Color(new Color(0x58, 0xA6, 0xFF)));
 AnsiConsole.MarkupLine("[grey]Local, offline voice dictation -- speak, and the text types into whatever window has focus.[/]\n");
 
 const string createShortcutsChoice = "Create desktop shortcuts";
