@@ -18,15 +18,28 @@ while building it (see `docs/MANUAL_VERIFICATION.md` item 5): look at it yoursel
 Windows Terminal (and separately in legacy `conhost`, if that matters to you) and change
 the four `Color(...)` values in `DictationView.cs` directly if it needs adjusting.
 
-## A real bug this theme already caused once
+## Two real bugs this theme already caused
 
-`Program.cs` originally built the Figlet banner's color with
-`Color.FromInt32(0x58A6FF)` -- `FromInt32` takes a legacy **indexed** terminal color
-number (0-255), not a packed RGB value, so `0x58A6FF` (5,799,935) threw
-`InvalidOperationException: Color number must be between 0 and 255` on the very first
-line of `Main`, before the app could show anything at all. `dotnet build`/`dotnet test`
-both stayed green through this, because nothing exercises `Program.cs`'s top-level
-statements -- found only by actually running the app, not by the test suite. Fixed to
-`new Color(0x58, 0xA6, 0xFF)` (the same three-byte-RGB constructor `DictationView.cs`
-was already using correctly). If you add a new color anywhere in this project, use that
-constructor, not `Color.FromInt32`.
+Both found only by actually running the app end to end on 2026-10-08 -- `dotnet build`
+and `dotnet test` stayed green through both, because neither exercises `Program.cs`'s
+top-level statements or renders real Spectre markup.
+
+1. **`Program.cs` originally built the Figlet banner's color with
+   `Color.FromInt32(0x58A6FF)`.** `FromInt32` takes a legacy **indexed** terminal color
+   number (0-255), not a packed RGB value, so `0x58A6FF` (5,799,935) threw
+   `InvalidOperationException: Color number must be between 0 and 255` on the very first
+   line of `Main`, before the app could show anything at all. Fixed to
+   `new Color(0x58, 0xA6, 0xFF)`.
+2. **`DictationView`/`LiveTranscriptView` originally built their header markup by
+   interpolating a `Style`'s `.Foreground` `Color` directly into the markup string**
+   (`$"[{style.Foreground}]..."`). A `Color`'s `ToString()` renders as `(RGB=88,166,255)`,
+   which is not valid Spectre markup syntax -- every header render past the first
+   ("Starting...") threw `InvalidOperationException: Could not find color or style
+   '(RGB=88,166,255)'`, crashing Live and Dictate mode's live view the instant a real
+   phase change arrived. Fixed by keeping the four colors as plain hex strings
+   (`"#58A6FF"`, etc.) and interpolating those directly -- `[#58A6FF]...[/]` is valid
+   markup, a `Color` object's default string form is not.
+
+If you add a new color anywhere in this project: use the `new Color(r, g, b)`
+constructor to build one, and use a plain `"#RRGGBB"` hex string (not a `Color`/`Style`
+object's interpolated `ToString()`) wherever it needs to go into a markup string.

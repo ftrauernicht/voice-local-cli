@@ -40,11 +40,12 @@ window.
 The Python speech engine (`src/engine/`) is complete and has been used daily for voice
 dictation, with a real pytest suite and an 85% coverage gate. The .NET 10 +
 Spectre.Console orchestrator (`src/Cli/`) that replaces the previous two-PowerShell-
-windows-per-mode flow is built and tested for **Dictate mode**; Live and Call mode are
-designed for but not yet wired into it (selecting them currently prints "coming soon" --
-use the PowerShell-based flow below for those two in the meantime). See
-`docs/MANUAL_VERIFICATION.md` for what still needs a human at a real keyboard to confirm
-end to end.
+windows-per-mode flow covers **all three modes** -- Dictate, Live, and Call -- each with
+its own session type, confirmed end to end with a real microphone (real ffmpeg capture,
+a correctly finalized recording, a clean stop, and for Call mode a real transcription
+pass). What's still outstanding is specifically the live view's visual correctness and
+real typing into a focused window, which need a human at a real keyboard to judge -- see
+`docs/MANUAL_VERIFICATION.md`.
 
 This repo is not yet pushed to GitHub. It is being built up locally first; see
 `docs/adr/` once decisions are recorded there.
@@ -55,7 +56,7 @@ This repo is not yet pushed to GitHub. It is being built up locally first; see
 |---|---|
 | **Engine** | Python 3.11+, `faster-whisper` (CPU) or OpenVINO GenAI (Intel GPU), `webrtcvad` for pause detection |
 | **Orchestrator** | .NET 10, Spectre.Console, hexagonal architecture (`Domain`/`Application`/`Infrastructure`/`Ui.Console`) |
-| **Tests** | pytest (87%+ line coverage) + xUnit v3 (99%+ line coverage on the hexagonal core) -- both gated at 85% in CI |
+| **Tests** | pytest (87%+ line coverage) + xUnit v3 (98%+ line coverage on the hexagonal core) -- both gated at 85% in CI |
 | **CI/CD** | GitHub Actions: lint + test + coverage (Python, .NET, PowerShell), format, security scanning, Renovate |
 | **License** | MIT for this repo's code; third-party speech models keep their own licenses -- see [NOTICE](NOTICE) |
 
@@ -101,13 +102,15 @@ script prints at the end.
 # Pick your microphone once
 .\scripts\Set-AudioDevices.ps1
 
-# Dictate, via the .NET orchestrator
+# Launches the mode-selection menu (Dictate / Live / Call / Settings)
 dotnet run --project src\Cli\VoiceLocalCli.Ui.Console
+
+# Or skip the menu and go straight into a mode -- what the desktop shortcuts use
+dotnet run --project src\Cli\VoiceLocalCli.Ui.Console -- --mode dictate
 ```
 
-Live and Call mode don't have an orchestrator yet -- run the Python engine directly
-against an `ffmpeg`-recorded, rotating WAV file, the same way `dictate.py` is driven
-internally; see `src/engine/CONTRACT.md` for each entry point's arguments.
+The Settings menu has a "Create desktop shortcuts" option: one `.lnk` per mode, each
+with its own icon, that launches straight into that mode without the menu prompt.
 
 ## Requirements
 
@@ -143,7 +146,9 @@ work, which real engagements built on this engine would be.
 
 - A coverage badge that reflects the live percentage, once this repo has a GitHub remote
   to test the mechanism against.
-- Wire Live and Call mode into the .NET orchestrator (currently Python-direct only).
+- An auto-update mechanism for the published orchestrator exe (Velopack is the leading
+  candidate -- see `docs/adr/` once that decision is recorded; no release pipeline exists
+  yet, so there's nothing to update against today).
 - See `docs/adr/` for the architecture decisions recorded so far, and
   `docs/MANUAL_VERIFICATION.md` for what's confirmed only by hand, not by CI.
 

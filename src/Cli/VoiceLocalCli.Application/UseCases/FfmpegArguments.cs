@@ -25,4 +25,24 @@ public static class FfmpegArguments
             $"{segmentPrefix}_%03d.wav",
         ];
     }
+
+    /// <summary>
+    /// A single, continuously-growing WAV file -- what transcribe_live.py and transcribe.py
+    /// both expect (unlike dictate.py's rotating segments). The same builder serves Live and
+    /// Call mode: both record identically, and only differ in what happens to the file
+    /// afterward (transcribed as it grows, vs. transcribed once after recording stops).
+    /// </summary>
+    public static IReadOnlyList<string> ForContinuousCapture(string microphoneDevice, string outputWavPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(microphoneDevice);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputWavPath);
+        return
+        [
+            "-f", "dshow",
+            "-i", $"audio={microphoneDevice}",
+            "-ar", "16000",
+            "-ac", "1",
+            outputWavPath,
+        ];
+    }
 }

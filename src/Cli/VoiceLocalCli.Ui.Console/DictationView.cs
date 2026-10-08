@@ -23,10 +23,17 @@ internal sealed class DictationView
     // background fill) -- see docs/UI_THEME.md for the rationale and the exact values,
     // which are a judgment call on an underspecified "GitHub-inspired" request and
     // deliberately centralized here so revising them later is a one-file change.
-    private static readonly Style AccentStyle = new(new Color(0x58, 0xA6, 0xFF));
-    private static readonly Style MutedStyle = new(new Color(0x8B, 0x94, 0x9E));
-    private static readonly Style TypingStyle = new(new Color(0x3F, 0xB9, 0x50));
-    private static readonly Style FocusMismatchStyle = new(new Color(0xD2, 0x99, 0x22));
+    //
+    // Plain hex strings, not Style/Color objects: interpolating a Color's own ToString()
+    // into markup (e.g. "[{color}]...[/]") produces "(RGB=88,166,255)", which isn't valid
+    // Spectre markup syntax and throws at render time -- found by actually running Live
+    // mode end to end on 2026-10-08, not caught by any unit test (nothing renders real
+    // Spectre markup in this project's test suite). "[#58A6FF]...[/]" is the correct
+    // syntax, so the hex string is what belongs directly in the markup.
+    private const string AccentColor = "#58A6FF";
+    private const string MutedColor = "#8B949E";
+    private const string TypingColor = "#3FB950";
+    private const string FocusMismatchColor = "#D29922";
 
     private readonly ConcurrentQueue<TranscriptEntry> _recentLines = new();
     private DictationPhase _phase = DictationPhase.Unknown;
@@ -46,65 +53,27 @@ internal sealed class DictationView
     /// <summary>Runs the live view until <paramref name="stopRequested"/> signals true
     /// (the user pressed the stop key) or <paramref name="sessionEnded"/> signals true
     /// (the engine finished on its own, e.g. the recording stopped externally).</summary>
-    internal async Task RunAsync(Func<bool> stopRequested, Func<bool> sessionEnded, CancellationToken cancellationToken)
-    {
-        await AnsiConsole.Live(BuildLayout())
-            .StartAsync(async ctx =>
-            {
-                while (!stopRequested() && !sessionEnded() && !cancellationToken.IsCancellationRequested)
-                {
-                    ctx.UpdateTarget(BuildLayout());
-                    ctx.Refresh();
-                    await Task.Delay(RefreshInterval, cancellationToken).ConfigureAwait(false);
-                }
+    internal Task RunAsync(Func<bool> stopRequested, Func<bool> sessionEnded, CancellationToken cancellationToken) =>
+        LiveLayoutRenderer.RunAsync(BuildLayout, stopRequested, sessionEnded, cancellationToken, RefreshInterval);
 
-                ctx.UpdateTarget(BuildLayout());
-                ctx.Refresh();
-            })
-            .ConfigureAwait(false);
-    }
-
-    private Layout BuildLayout()
-    {
-        var layout = new Layout("Root")
-            .SplitRows(
-                new Layout("Header").Size(3),
-                new Layout("Transcript"),
-                new Layout("Footer").Size(1));
-
-        layout["Header"].Update(BuildHeader());
-        layout["Transcript"].Update(BuildTranscript());
-        layout["Footer"].Update(BuildFooter());
-        return layout;
-    }
+    private Layout BuildLayout() =>
+        LiveLayoutRenderer.Build(BuildHeader(), [.. _recentLines], "Nothing transcribed yet -- start speaking.", BuildFooter());
 
     private IRenderable BuildHeader()
     {
-        (string label, Style style, string icon) = _phase switch
+        (string label, string color, string icon) = _phase switch
         {
-            DictationPhase.Listening => ("Listening", AccentStyle, "\U0001F442"),
-            DictationPhase.Transcribing => ("Transcribing", AccentStyle, "✍"),
-            DictationPhase.Typing => ("Typing", TypingStyle, "⌨"),
-            DictationPhase.FocusMismatch => ("Focus changed -- not typed", FocusMismatchStyle, "⚠"),
-            DictationPhase.Finished => ("Finished", MutedStyle, "✓"),
-            _ => ("Starting...", MutedStyle, "…"),
+            DictationPhase.Listening => ("Listening", AccentColor, "\U0001F442"),
+            DictationPhase.Transcribing => ("Transcribing", AccentColor, "✍"),
+            DictationPhase.Typing => ("Typing", TypingColor, "⌨"),
+            DictationPhase.FocusMismatch => ("Focus changed -- not typed", FocusMismatchColor, "⚠"),
+            DictationPhase.Finished => ("Finished", MutedColor, "✓"),
+            _ => ("Starting...", MutedColor, "…"),
         };
 
         TimeSpan elapsed = DateTimeOffset.Now - _startedAt;
-        var markup = new Markup($"{icon} [{style.Foreground}]{label.EscapeMarkup()}[/]  [grey]{elapsed:hh\\:mm\\:ss}[/]");
+        var markup = new Markup($"{icon} [{color}]{label.EscapeMarkup()}[/]  [grey]{elapsed:hh\\:mm\\:ss}[/]");
         return new Panel(markup).Header("voice-local-cli -- Dictate").Expand();
-    }
-
-    private IRenderable BuildTranscript()
-    {
-        TranscriptEntry[] lines = [.. _recentLines];
-        if (lines.Length == 0)
-        {
-            return new Panel(new Markup("[grey]Nothing transcribed yet -- start speaking.[/]")).Expand();
-        }
-
-        var rows = new Rows(lines.Select(entry => new Markup(entry.Text.EscapeMarkup())));
-        return new Panel(rows).Expand();
     }
 
     private static IRenderable BuildFooter() =>

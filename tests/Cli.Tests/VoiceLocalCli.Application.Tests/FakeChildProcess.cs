@@ -18,6 +18,14 @@ internal sealed class FakeChildProcess : IChildProcess
 
     public IReadOnlyList<string> StandardInputWrites => _standardInputWrites;
 
+    /// <summary>Lines to emit via <see cref="OutputLineReceived"/> right before reporting
+    /// as exited, simulating a real process (like transcribe.py) that prints a final
+    /// status line and then exits almost immediately after -- without this, a test waiting
+    /// on <see cref="WaitForExitAsync"/> for a process whose exit carries meaning (e.g. its
+    /// last <c>@@STATE:</c> event) would have no way to inject that line at the right
+    /// moment, since the fake's exit is already-synchronously-completed.</summary>
+    public List<string> OutputLinesToEmitBeforeExit { get; } = [];
+
     public int Id => 4242;
 
     public event Action<string>? OutputLineReceived;
@@ -34,6 +42,11 @@ internal sealed class FakeChildProcess : IChildProcess
     {
         if (ExitsWithinTimeout)
         {
+            foreach (string line in OutputLinesToEmitBeforeExit)
+            {
+                OutputLineReceived?.Invoke(line);
+            }
+
             HasExited = true;
         }
 

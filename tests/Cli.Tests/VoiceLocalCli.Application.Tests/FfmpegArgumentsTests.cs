@@ -40,4 +40,23 @@ public sealed class FfmpegArgumentsTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => FfmpegArguments.ForDictateCapture("Mic", "prefix", 0));
     }
+
+    [Fact]
+    public void ContinuousCaptureBuildsASingleGrowingFileNotASegmentedOne()
+    {
+        IReadOnlyList<string> args = FfmpegArguments.ForContinuousCapture("My Microphone", @"C:\recordings\live_1.wav");
+
+        Assert.Equal(
+            ["-f", "dshow", "-i", "audio=My Microphone", "-ar", "16000", "-ac", "1", @"C:\recordings\live_1.wav"],
+            args);
+        Assert.DoesNotContain(args, a => a == "segment");
+    }
+
+    [Theory]
+    [InlineData("", @"C:\out.wav")]
+    [InlineData("Mic", "")]
+    public void ContinuousCaptureRejectsBlankArguments(string microphoneDevice, string outputWavPath)
+    {
+        Assert.Throws<ArgumentException>(() => FfmpegArguments.ForContinuousCapture(microphoneDevice, outputWavPath));
+    }
 }

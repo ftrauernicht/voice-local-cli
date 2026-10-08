@@ -14,7 +14,7 @@ internal sealed class RealChildProcess : IChildProcess
 {
     private readonly Process _process;
 
-    internal RealChildProcess(string fileName, IReadOnlyList<string> arguments)
+    internal RealChildProcess(string fileName, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -28,6 +28,14 @@ internal sealed class RealChildProcess : IChildProcess
         foreach (string argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        if (environmentVariables is not null)
+        {
+            foreach ((string key, string value) in environmentVariables)
+            {
+                startInfo.EnvironmentVariables[key] = value;
+            }
         }
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };

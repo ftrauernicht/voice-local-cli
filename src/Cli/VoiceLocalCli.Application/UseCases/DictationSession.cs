@@ -91,23 +91,11 @@ public sealed class DictationSession(
             return;
         }
 
-        if (!_ffmpeg.HasExited)
-        {
-            await _ffmpeg.WriteStandardInputAsync("q", cancellationToken).ConfigureAwait(false);
-            bool ffmpegExited = await _ffmpeg.WaitForExitAsync(FfmpegStopTimeout, cancellationToken).ConfigureAwait(false);
-            if (!ffmpegExited)
-            {
-                _ffmpeg.Kill();
-            }
-        }
+        await ChildProcessStopSequence.SignalThenKillIfNeededAsync(_ffmpeg, "q", FfmpegStopTimeout, cancellationToken).ConfigureAwait(false);
 
-        if (_engine is not null && !_engine.HasExited)
+        if (_engine is not null)
         {
-            bool engineExited = await _engine.WaitForExitAsync(EngineStopTimeout, cancellationToken).ConfigureAwait(false);
-            if (!engineExited)
-            {
-                _engine.Kill();
-            }
+            await ChildProcessStopSequence.WaitThenKillIfNeededAsync(_engine, EngineStopTimeout, cancellationToken).ConfigureAwait(false);
         }
     }
 

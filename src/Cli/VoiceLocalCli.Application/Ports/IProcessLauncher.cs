@@ -7,5 +7,10 @@ namespace VoiceLocalCli.Application.Ports;
 /// </summary>
 public interface IProcessLauncher
 {
-    IChildProcess Start(string fileName, IReadOnlyList<string> arguments);
+    /// <param name="fileName">The executable to launch.</param>
+    /// <param name="arguments">Its command-line arguments.</param>
+    /// <param name="environmentVariables">Extra variables to set on the child process (for
+    /// example HF_TOKEN for transcribe.py's optional speaker diarization) -- merged into,
+    /// not replacing, the inherited environment. Omit for a process that needs none.</param>
+    IChildProcess Start(string fileName, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? environmentVariables = null);
 }

@@ -7,6 +7,6 @@ namespace VoiceLocalCli.Infrastructure;
 /// <see cref="ProcessJobObject"/> for the hard-kill orphan-prevention guarantee.</summary>
 public sealed class RealProcessLauncher : IProcessLauncher
 {
-    public IChildProcess Start(string fileName, IReadOnlyList<string> arguments) =>
-        new RealChildProcess(fileName, arguments);
+    public IChildProcess Start(string fileName, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? environmentVariables = null) =>
+        new RealChildProcess(fileName, arguments, environmentVariables);
 }

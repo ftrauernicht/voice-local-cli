@@ -32,8 +32,8 @@ internal static class RepositoryLayout
     internal static string EnginePythonExecutable(string repositoryRoot) =>
         Path.Combine(repositoryRoot, "src", "engine", ".venv", "Scripts", "python.exe");
 
-    internal static string EngineScript(string repositoryRoot) =>
-        Path.Combine(repositoryRoot, "src", "engine", "dictate.py");
+    internal static string EngineScript(string repositoryRoot, string scriptFileName) =>
+        Path.Combine(repositoryRoot, "src", "engine", scriptFileName);
 
     internal static string RecordingsDirectory(string repositoryRoot)
     {
