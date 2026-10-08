@@ -1,0 +1,32 @@
+# Python
+src/engine/.venv/
+src/engine/__pycache__/
+**/__pycache__/
+*.pyc
+src/engine/*.egg-info/
+
+# Locally downloaded models (large, re-downloaded on demand)
+src/engine/ov-models/
+
+# Per-machine, git-ignored configuration and state (contains real device names, names,
+# and jargon -- see src/engine/_hotwords.py and scripts/_Common.ps1)
+src/engine/devices.local.json
+src/engine/hotwords.local.json
+src/engine/hotwords_candidates.local.json
+
+# Recordings and transcripts produced by running the tool
+recordings/
+*.wav
+*.dictate.txt
+*.live.txt
+
+# .NET (populated once WP3 scaffolds src/Cli)
+**/bin/
+**/obj/
+*.user
+
+# Editor/OS noise
+.vs/
+.idea/
+*.swp
+Thumbs.db

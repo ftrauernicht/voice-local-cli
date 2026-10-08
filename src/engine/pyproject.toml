@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voice-local-cli-engine"
+version = "0.1.0"
+description = "Local, offline speech-to-text engine: pause-aware dictation, live call transcripts, and full call transcription with speaker diarization."
+# No `readme` field: setuptools refuses to read a file outside this directory (the real
+# README.md lives two levels up, at the repo root), and this package is never published to
+# PyPI anyway -- there's no long description to build.
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    "faster-whisper",
+    "pyannote.audio",
+    "pyautogui",
+    "pygetwindow",
+    "transformers",
+    "torchaudio",
+    "webrtcvad-wheels",
+    "numpy",
+]
+
+[project.optional-dependencies]
+# Intel-GPU acceleration for Live/Dictate/Call. Entirely optional: every mode falls back
+# to the CPU path automatically if this isn't installed or no matching GPU is found.
+gpu = [
+    "optimum-intel[openvino]",
+    "openvino-genai",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["../../tests/engine"]
+
+[tool.coverage.run]
+branch = true
+source = ["."]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+exclude_also = [
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.setuptools]
+# Flat scripts, not a package directory (no __init__.py) -- each module is listed
+# individually so setuptools knows what to install for an editable install.
+py-modules = [
+    "dictate",
+    "transcribe",
+    "transcribe_live",
+    "_console",
+    "_hotwords",
+    "_openvino_backend",
+    "_align_backend",
+]
