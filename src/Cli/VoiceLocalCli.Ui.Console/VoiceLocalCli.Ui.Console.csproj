@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- This app only ever runs on Windows (dshow audio capture, Win32 console-control/Job
+         Object interop, WScript.Shell for desktop shortcuts): targeting the Windows TFM
+         instead of plain net10.0 is what lets the compiler check that honestly, rather
+         than suppressing CA1416 one call site at a time as new Windows-only APIs get used. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>VoiceLocalCli</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>

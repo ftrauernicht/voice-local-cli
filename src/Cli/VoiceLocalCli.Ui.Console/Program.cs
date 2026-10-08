@@ -8,12 +8,30 @@ using VoiceLocalCli.Ui.Console;
 AnsiConsole.Write(new FigletText("voice-local-cli").Color(Color.FromInt32(0x58A6FF)));
 AnsiConsole.MarkupLine("[grey]Local, offline voice dictation -- speak, and the text types into whatever window has focus.[/]\n");
 
-string mode = AnsiConsole.Prompt(
-    new SelectionPrompt<string>()
-        .Title("What do you want to do?")
-        .AddChoices("Dictate", "Live (coming soon)", "Call (coming soon)"));
+const string createShortcutsChoice = "Create desktop shortcuts";
 
-if (mode != "Dictate")
+OrchestratorMode? mode = ParseModeArgument(args);
+if (mode is null)
+{
+    string selection = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+            .Title("What do you want to do?")
+            .AddChoices("Dictate", "Live (coming soon)", "Call (coming soon)", createShortcutsChoice));
+
+    if (selection == createShortcutsChoice)
+    {
+        return CreateShortcuts();
+    }
+
+    mode = selection switch
+    {
+        "Dictate" => OrchestratorMode.Dictate,
+        _ when selection.StartsWith("Live", StringComparison.Ordinal) => OrchestratorMode.Live,
+        _ => OrchestratorMode.Call,
+    };
+}
+
+if (mode != OrchestratorMode.Dictate)
 {
     AnsiConsole.MarkupLine("[yellow]This mode isn't wired up yet -- see the repo README's \"Roadmap\".[/]");
     return 0;
@@ -100,7 +118,9 @@ await keyWatcher;
 AnsiConsole.MarkupLine("\n[green]Dictation finished.[/]");
 return 0;
 
-static string? ResolveFfmpegPath()
+static string? ResolveFfmpegPath() => ResolveOnPath("ffmpeg.exe");
+
+static string? ResolveOnPath(string executableName)
 {
     string? pathVariable = Environment.GetEnvironmentVariable("PATH");
     if (pathVariable is null)
@@ -110,7 +130,7 @@ static string? ResolveFfmpegPath()
 
     foreach (string directory in pathVariable.Split(Path.PathSeparator))
     {
-        string candidate = Path.Combine(directory, "ffmpeg.exe");
+        string candidate = Path.Combine(directory, executableName);
         if (File.Exists(candidate))
         {
             return candidate;
@@ -118,4 +138,53 @@ static string? ResolveFfmpegPath()
     }
 
     return null;
+}
+
+static OrchestratorMode? ParseModeArgument(string[] commandLineArgs)
+{
+    for (int i = 0; i < commandLineArgs.Length - 1; i++)
+    {
+        if (commandLineArgs[i] == "--mode" &&
+            Enum.TryParse(commandLineArgs[i + 1], ignoreCase: true, out OrchestratorMode parsed))
+        {
+            return parsed;
+        }
+    }
+
+    return null;
+}
+
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static int CreateShortcuts()
+{
+    string repositoryRoot;
+    try
+    {
+        repositoryRoot = RepositoryLayout.FindRepositoryRoot();
+    }
+    catch (InvalidOperationException ex)
+    {
+        AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
+        return 1;
+    }
+
+    string? dotnetExecutable = ResolveOnPath(OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+    if (dotnetExecutable is null)
+    {
+        AnsiConsole.MarkupLine("[red]Could not find dotnet on PATH.[/]");
+        return 1;
+    }
+
+    string desktopDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+    var useCase = new CreateDesktopShortcutsUseCase(new RealShortcutWriter());
+    IReadOnlyList<DesktopShortcutDefinition> created = useCase.Run(repositoryRoot, desktopDirectory, dotnetExecutable);
+
+    foreach (DesktopShortcutDefinition shortcut in created)
+    {
+        AnsiConsole.MarkupLine($"[green]Created[/] {shortcut.ShortcutPath.EscapeMarkup()}");
+    }
+
+    AnsiConsole.MarkupLine(
+        "\n[grey]Each shortcut runs 'dotnet run' against this checkout -- if you move or delete this folder, re-run this menu item from the new location instead of expecting the old shortcuts to still work.[/]");
+    return 0;
 }

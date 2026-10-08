@@ -65,3 +65,14 @@ needs a human is listed here explicitly rather than silently assumed to work.
    to them without rearchitecting (see `DictationSettings`, `EngineEvent`'s vocabulary
    already covering `recording`/`transcribing_chunk`/`transcribing_full`/
    `diarizing_speakers` from CONTRACT.md), but no orchestration logic for them exists yet.
+8. **"Create desktop shortcuts"** (the menu's fourth option) was verified mechanically --
+   `DesktopShortcutPlanTests`/`CreateDesktopShortcutsUseCaseTests` cover the planning logic
+   against a fake writer, and `RealShortcutWriter`'s `WScript.Shell` COM calls build and
+   run without throwing -- but the resulting `.lnk` files have not been double-clicked for
+   real. Run the menu option, then from the real Desktop:
+   - confirm all three shortcuts appear with their distinct per-mode icons
+     (`src/Cli/VoiceLocalCli.Ui.Console/Assets/icons/*.ico` -- placeholder art, not yet
+     reviewed against the project's eventual brand direction in `docs/branding/`),
+   - double-click the Dictate shortcut and confirm it launches the orchestrator straight
+     into Dictate mode (no menu prompt), from this repository as its working directory,
+   - confirm the Live/Call shortcuts still show "coming soon" rather than erroring.
