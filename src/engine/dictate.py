@@ -43,8 +43,12 @@ import webrtcvad
 import _console as c
 import _hotwords
 from transcribe_live import (
-    find_data_offset, available_frames, read_frame_range, read_frame_range_bytes,
-    load_backend, SAMPLE_RATE,
+    SAMPLE_RATE,
+    available_frames,
+    find_data_offset,
+    load_backend,
+    read_frame_range,
+    read_frame_range_bytes,
 )
 
 pyautogui.FAILSAFE = False
@@ -141,22 +145,28 @@ def review_hotword_candidates(session_texts: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("prefix", type=Path,
-                         help="Path prefix of the segment files (without '_NNN.wav'), as ffmpeg's -f segment creates them")
+    parser.add_argument(
+        "prefix", type=Path,
+        help="Path prefix of the segment files (without '_NNN.wav'), as ffmpeg's -f segment creates them",
+    )
     parser.add_argument("--pause-seconds", type=float, default=0.6,
                          help="Silence duration that closes off a chunk")
     parser.add_argument("--vad-aggressiveness", type=int, default=2, choices=[0, 1, 2, 3],
                          help="webrtcvad sensitivity (0 = least aggressive at detecting silence, 3 = most)")
-    parser.add_argument("--max-buffer-seconds", type=float, default=15.0,
-                         help="Safety net: close off a chunk after this many seconds even without a pause (long monologue)")
+    parser.add_argument(
+        "--max-buffer-seconds", type=float, default=15.0,
+        help="Safety net: close off a chunk after this many seconds even without a pause (long monologue)",
+    )
     parser.add_argument("--backend", choices=["auto", "cpu", "gpu"], default="auto",
                          help="auto = use GPU if available, else CPU (default)")
     parser.add_argument("--language", default="de")
     parser.add_argument("--stale-after", type=float, default=16.0,
                          help="Recording is considered finished after this many seconds without file growth")
     parser.add_argument("--out", type=Path, help="Log file (default: prefix with .dictate.txt)")
-    parser.add_argument("--keep-audio", action="store_true",
-                         help="Don't delete segment files (default: delete each finished segment right after transcribing it)")
+    parser.add_argument(
+        "--keep-audio", action="store_true",
+        help="Don't delete segment files (default: delete each finished segment right after transcribing it)",
+    )
     args = parser.parse_args()
 
     out_path = args.out or args.prefix.with_suffix(".dictate.txt")
@@ -182,7 +192,10 @@ def main() -> None:
 
     session_texts: list[str] = []
 
-    c.info(f"Dictation running (pause detection, ~{args.pause_seconds:.1f}s of silence closes off a chunk). Focus your target window now.")
+    c.info(
+        f"Dictation running (pause detection, ~{args.pause_seconds:.1f}s of silence closes off a chunk). "
+        "Focus your target window now."
+    )
     c.info("Typing happens WITHOUT an automatic Enter -- you confirm/run it yourself.\n")
 
     window_before = active_window_title()

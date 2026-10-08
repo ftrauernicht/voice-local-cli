@@ -51,8 +51,16 @@ exclude_also = [
 ]
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py311"
+
+[tool.ruff.lint]
+# A deliberate, explicit selection rather than relying on ruff's own (version-dependent)
+# defaults: pycodestyle errors, pyflakes, isort, pyupgrade. Deliberately NOT flake8-blind-
+# except (BLE) -- several places here (diarize()'s failure isolation, _read_json's
+# corrupt-file fallback, align_words()'s model-failure fallback) catch a broad Exception
+# on purpose, at a boundary with an unpredictable third-party system, not out of laziness.
+select = ["E", "F", "I", "UP"]
 
 [tool.setuptools]
 # Flat scripts, not a package directory (no __init__.py) -- each module is listed

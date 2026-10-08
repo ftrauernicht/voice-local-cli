@@ -8,7 +8,6 @@ Does not produce word-level timestamps itself (the pre-converted model fails on 
 transcribe_chunk). For Call mode, transcribe.py recovers word timestamps afterwards via
 Forced Alignment per segment -- see _align_backend.py and README.md, "Model choice".
 """
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -72,7 +71,9 @@ def transcribe_chunk(pipeline, samples, language: str = "de", hotwords: str = ""
 CHUNK_SECONDS = 28.0  # under the model's ~30s context window
 
 
-def transcribe_long(pipeline, samples, language: str = "de", sample_rate: int = 16000, hotwords: str = "") -> list[dict]:
+def transcribe_long(
+    pipeline, samples, language: str = "de", sample_rate: int = 16000, hotwords: str = ""
+) -> list[dict]:
     """Transcribes a recording of arbitrary length with segment-level timestamps
     (start/end/text, not word-level -- see _align_backend.align_words for that).
 
