@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace VoiceLocalCli.Ui.Console;
 
 /// <summary>
@@ -49,4 +51,31 @@ internal static class RepositoryLayout
 
     internal static string DevicesConfigPath(string repositoryRoot) =>
         Path.Combine(repositoryRoot, "scripts", "devices.local.json");
+
+    /// <param name="repositoryRoot">The repository root, from <see cref="FindRepositoryRoot"/>.</param>
+    /// <param name="purpose">"mic" (Dictate) or "call" (Live/Call) -- see
+    /// <c>Set-AudioDevices.ps1</c>'s own doc comment for the distinction.</param>
+    /// <returns>The configured device name, or null if nothing is configured yet, or the
+    /// config file is missing/unreadable.</returns>
+    internal static string? ConfiguredDevice(string repositoryRoot, string purpose)
+    {
+        string path = DevicesConfigPath(repositoryRoot);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            string property = purpose == "mic" ? "micDevice" : "callDevice";
+            return document.RootElement.TryGetProperty(property, out JsonElement element) && element.ValueKind == JsonValueKind.String
+                ? element.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

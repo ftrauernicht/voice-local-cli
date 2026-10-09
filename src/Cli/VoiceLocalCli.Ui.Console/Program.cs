@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.Json;
 
 using Spectre.Console;
 
@@ -41,18 +40,16 @@ catch (InvalidOperationException ex)
 }
 
 string pythonExecutable = RepositoryLayout.EnginePythonExecutable(repositoryRoot);
-if (!File.Exists(pythonExecutable))
-{
-    AnsiConsole.MarkupLine($"[red]No Python environment found at {pythonExecutable.EscapeMarkup()}.[/]");
-    AnsiConsole.MarkupLine("[grey]Run scripts\\Setup.ps1 first.[/]");
-    return 1;
-}
-
 string? ffmpegExecutable = ResolveFfmpegPath();
-if (ffmpegExecutable is null)
+
+IReadOnlyList<EnvironmentCheckItem> environmentChecks = EnvironmentCheck.Collect(repositoryRoot, pythonExecutable, ffmpegExecutable);
+EnvironmentCheck.Print(environmentChecks);
+
+if (environmentChecks.Any(item => item.Status == EnvironmentCheckStatus.Error) || ffmpegExecutable is null)
 {
-    AnsiConsole.MarkupLine("[red]ffmpeg was not found on PATH.[/]");
-    AnsiConsole.MarkupLine("[grey]Run scripts\\Setup.ps1 first.[/]");
+    // The second condition can never trigger on its own -- a null ffmpegExecutable always
+    // produces an Error item above -- it exists only to narrow the type for the compiler's
+    // nullable analysis below, which can't follow that invariant through the lambda.
     return 1;
 }
 
@@ -349,7 +346,7 @@ static async Task<string?> ResolveHfTokenAsync(string repositoryRoot)
 // closed it without finishing).
 static string ResolveDevice(string repositoryRoot, string purpose)
 {
-    string? configured = ReadConfiguredDevice(repositoryRoot, purpose);
+    string? configured = RepositoryLayout.ConfiguredDevice(repositoryRoot, purpose);
     if (configured is not null)
     {
         return configured;
@@ -359,39 +356,22 @@ static string ResolveDevice(string repositoryRoot, string purpose)
     AnsiConsole.MarkupLine($"[grey]No {label} device configured yet -- running Set-AudioDevices.ps1...[/]\n");
     RunSetAudioDevicesInteractively(repositoryRoot);
 
-    configured = ReadConfiguredDevice(repositoryRoot, purpose);
+    configured = RepositoryLayout.ConfiguredDevice(repositoryRoot, purpose);
     return configured ?? AnsiConsole.Ask<string>($"{label} device name (the exact ffmpeg/dshow name):");
-}
-
-static string? ReadConfiguredDevice(string repositoryRoot, string purpose)
-{
-    string path = RepositoryLayout.DevicesConfigPath(repositoryRoot);
-    if (!File.Exists(path))
-    {
-        return null;
-    }
-
-    try
-    {
-        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
-        string property = purpose == "mic" ? "micDevice" : "callDevice";
-        return document.RootElement.TryGetProperty(property, out JsonElement element) && element.ValueKind == JsonValueKind.String
-            ? element.GetString()
-            : null;
-    }
-    catch (JsonException)
-    {
-        return null;
-    }
 }
 
 // Runs Set-AudioDevices.ps1 with no stdio redirection at all, so it inherits this
 // process's own console directly -- its Read-Host prompts work exactly as if it had been
 // run by hand in this same window, instead of needing a separate PowerShell window the
 // way the README used to describe.
-static void RunSetAudioDevicesInteractively(string repositoryRoot)
+static void RunSetAudioDevicesInteractively(string repositoryRoot) =>
+    RunPowerShellScriptInteractively(Path.Combine(repositoryRoot, "scripts", "Set-AudioDevices.ps1"));
+
+// Shared with RunSetAudioDevicesInteractively: no stdio redirection, so a script's
+// Read-Host (including -AsSecureString, hidden-input prompts like Save-HfToken.ps1's)
+// behaves exactly as if it had been run by hand in this same window.
+static void RunPowerShellScriptInteractively(string scriptPath)
 {
-    string scriptPath = Path.Combine(repositoryRoot, "scripts", "Set-AudioDevices.ps1");
     if (!File.Exists(scriptPath))
     {
         AnsiConsole.MarkupLine($"[red]Could not find {scriptPath.EscapeMarkup()}.[/]");
@@ -453,10 +433,11 @@ static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUp
     const string createShortcutsChoice = "Create desktop shortcuts";
     const string changeDevicesChoice = "Change audio devices";
     const string setFolderChoice = "Set recordings/transcripts folder";
+    const string setHfTokenChoice = "Set Hugging Face token";
     const string backChoice = "Back";
 
     string? updateChoice = availableUpdate is null ? null : $"Update to v{availableUpdate.Version}";
-    List<string> choices = [createShortcutsChoice, changeDevicesChoice, setFolderChoice];
+    List<string> choices = [createShortcutsChoice, changeDevicesChoice, setFolderChoice, setHfTokenChoice];
     if (updateChoice is not null)
     {
         choices.Add(updateChoice);
@@ -481,6 +462,10 @@ static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUp
     {
         await SetRecordingsFolderAsync(settingsStore).ConfigureAwait(false);
     }
+    else if (selection == setHfTokenChoice)
+    {
+        SetHuggingFaceToken();
+    }
     else if (selection == updateChoice)
     {
         await AnsiConsole.Status().StartAsync(
@@ -503,6 +488,22 @@ static void ChangeAudioDevices()
     }
 
     RunSetAudioDevicesInteractively(repositoryRoot);
+}
+
+static void SetHuggingFaceToken()
+{
+    string repositoryRoot;
+    try
+    {
+        repositoryRoot = RepositoryLayout.FindRepositoryRoot();
+    }
+    catch (InvalidOperationException ex)
+    {
+        AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
+        return;
+    }
+
+    RunPowerShellScriptInteractively(Path.Combine(repositoryRoot, "scripts", "Save-HfToken.ps1"));
 }
 
 static async Task SetRecordingsFolderAsync(ISettingsStore settingsStore)

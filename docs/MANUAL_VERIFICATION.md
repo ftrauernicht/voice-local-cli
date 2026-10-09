@@ -201,3 +201,22 @@ a human.
     2-3 terminal rows instead of 1. Not verified: how this actually looks in a real
     terminal, including whether 8 entries is now too few or still too many given a
     typical window height.
+15. **Every launch now prints a startup environment check** (`EnvironmentCheck`,
+    2026-10-09, from live feedback: the missing-Hugging-Face-token notice used to only
+    surface after a whole Call recording had already finished, with no way to know
+    beforehand). Lists Python/ffmpeg (required -- a missing one still exits with code 1,
+    now gated by this same check instead of two separate inline failures) and the
+    configured mic/call devices and Hugging Face token (optional, shown as "not set"
+    rather than blocking). Also added a "Set Hugging Face token" item to the Settings
+    menu, running `Save-HfToken.ps1` with inherited console stdio the same way "Change
+    audio devices" already runs `Set-AudioDevices.ps1`. Verified for real: run directly
+    against this checkout's actual state (a configured `devices.local.json`, no stored
+    HF token, and -- in the non-interactive tool session this was run from -- `ffmpeg`
+    not resolving on `PATH`), the table correctly showed each row's real status and the
+    process exited 1 on the missing-ffmpeg row, matching the existing documented
+    before-Setup.ps1 behavior in item 7 above, not a regression introduced here. Not
+    verified: the table's column alignment/wrapping in an actual interactive terminal
+    window (only confirmed through a piped, non-interactive capture, which does not
+    necessarily reflect Spectre's real terminal-width detection -- same caveat as item 5),
+    and the "Set Hugging Face token" menu item's `Read-Host -AsSecureString` prompt,
+    which needs a human to type a real token at a real, inherited console prompt.

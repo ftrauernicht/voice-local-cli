@@ -87,8 +87,14 @@ dotnet run --project src\Cli\VoiceLocalCli.Ui.Console
 dotnet run --project src\Cli\VoiceLocalCli.Ui.Console -- --mode dictate
 ```
 
-The Settings menu has a "Create desktop shortcuts" option: one `.lnk` per mode, each
-with its own icon, that launches straight into that mode without the menu prompt.
+Every launch starts with a short environment check -- Python, ffmpeg, configured audio
+devices, and the Hugging Face token -- so a missing piece shows up before you pick a
+mode, not partway through a session.
+
+The Settings menu has a "Create desktop shortcuts" option (one `.lnk` per mode, each
+with its own icon, that launches straight into that mode without the menu prompt) and a
+"Set Hugging Face token" option that stores it DPAPI-encrypted for Call mode's speaker
+diarization.
 
 ## Requirements
 
@@ -100,7 +106,7 @@ with its own icon, that launches straight into that mode without the menu prompt
 | .NET 10 SDK | Yes, for the orchestrator | Builds/runs `src/Cli/` | CPU | Not needed if driving the Python engine directly |
 | Intel GPU + OpenVINO | Optional | Faster transcription | GPU | Falls back to CPU automatically if absent |
 | Voicemeeter | Optional | Mixes in the remote party's audio | -- | Only for Call/Live mode, never for Dictate |
-| Hugging Face account/token | Optional | Speaker diarization | -- | Only for Call mode's `pyannote.audio` pipeline |
+| Hugging Face account/token | Optional | Speaker diarization | -- | Only for Call mode's `pyannote.audio` pipeline; set via Settings > "Set Hugging Face token" |
 
 ## Models and their licenses
 
