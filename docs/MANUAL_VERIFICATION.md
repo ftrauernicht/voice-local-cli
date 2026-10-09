@@ -220,3 +220,18 @@ a human.
     necessarily reflect Spectre's real terminal-width detection -- same caveat as item 5),
     and the "Set Hugging Face token" menu item's `Read-Host -AsSecureString` prompt,
     which needs a human to type a real token at a real, inherited console prompt.
+16. **Live and Call now print a consent/data-protection warning panel** before recording
+    starts (`PrintCallConsentWarning`, 2026-10-09, requested live: these modes should
+    warn explicitly that recording a call -- e.g. a Microsoft Teams meeting -- needs
+    everyone's consent, mirroring the README's existing `[!WARNING]` callout but where it
+    can't be missed mid-session). Verified for real: `--mode call` with a real `ffmpeg`
+    on `PATH` (this tool session's own PATH lacks it; temporarily prepended the real
+    winget-installed `ffmpeg.exe` directory to confirm) rendered the bordered red panel
+    correctly between the environment-check table and "Recording to: ...", and real
+    `ffmpeg`/the recording file it produced were both cleaned up (process killed, WAV
+    deleted) right after -- the run itself is otherwise untested beyond that, since
+    `AnsiConsole.Live`'s cursor handling still can't run in this piped, non-interactive
+    tool session (`System.IO.IOException: The handle is invalid` from
+    `LegacyConsoleCursor.Show`, unrelated to this change -- the same class of limitation
+    as the `SelectionPrompt` menu itself, see above). Not verified: how the panel reads
+    and wraps in a real interactive terminal window, same caveat as items 5 and 15.

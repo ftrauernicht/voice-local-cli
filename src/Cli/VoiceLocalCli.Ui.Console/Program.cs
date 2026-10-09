@@ -157,6 +157,8 @@ static async Task<int> RunDictateAsync(string repositoryRoot, string pythonExecu
 
 static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
 {
+    PrintCallConsentWarning();
+
     var settings = new LiveTranscriptSettings(Microphone: microphone);
     var session = new LiveTranscriptSession(
         new RealProcessLauncher(),
@@ -200,6 +202,8 @@ static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutab
 
 static async Task<int> RunCallAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
 {
+    PrintCallConsentWarning();
+
     var settings = new CallRecordingSettings(Microphone: microphone);
     var session = new CallRecordingSession(
         new RealProcessLauncher(),
@@ -283,6 +287,28 @@ static async Task<int> RunCallAsync(string repositoryRoot, string pythonExecutab
     }
 
     return 0;
+}
+
+// Shown right before Live/Call actually starts recording -- both modes capture a mixed
+// call-audio bus (the remote party included, e.g. everyone in a Microsoft Teams meeting),
+// unlike Dictate, which only ever records the operator's own microphone. See the matching
+// callout in README.md; this is the same warning surfaced where it can't be missed, not a
+// duplicate decision -- the actual legal/consent judgment call stays with the operator.
+static void PrintCallConsentWarning()
+{
+    var panel = new Panel(new Markup(
+        "This mode records and transcribes the [bold]full audio of a call[/] -- everyone on it, " +
+        "not just you (e.g. everyone in a Microsoft Teams meeting).\n" +
+        "In Germany, recording or transcribing another person's spoken words without their " +
+        "knowledge is a criminal offense under [bold]§ 201 StGB[/], and similar consent " +
+        "requirements exist in most other jurisdictions.\n\n" +
+        "[bold]Only use this with the explicit, informed consent of everyone on the call.[/]"))
+        .Header("[red bold]Warning -- this records other people[/]")
+        .BorderColor(Color.Red)
+        .Expand();
+
+    AnsiConsole.Write(panel);
+    AnsiConsole.WriteLine();
 }
 
 static Layout BuildRecordingLayout(DateTimeOffset startedAt)
