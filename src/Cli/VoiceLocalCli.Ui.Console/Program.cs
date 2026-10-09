@@ -29,25 +29,6 @@ if (availableUpdate is not null)
 
 ISettingsStore settingsStore = new JsonSettingsStore();
 
-const string settingsChoice = "Settings";
-
-OrchestratorMode? mode = ParseModeArgument(args);
-while (mode is null)
-{
-    string selection = AnsiConsole.Prompt(
-        new SelectionPrompt<string>()
-            .Title("What do you want to do?")
-            .AddChoices("Dictate", "Live", "Call", settingsChoice));
-
-    if (selection == settingsChoice)
-    {
-        await RunSettingsMenuAsync(updateChecker, availableUpdate, settingsStore).ConfigureAwait(false);
-        continue;
-    }
-
-    mode = Enum.Parse<OrchestratorMode>(selection);
-}
-
 string repositoryRoot;
 try
 {
@@ -75,22 +56,64 @@ if (ffmpegExecutable is null)
     return 1;
 }
 
+OrchestratorMode? modeArgument = ParseModeArgument(args);
+if (modeArgument is not null)
+{
+    // --mode bypass (desktop shortcuts): run once and exit -- no menu involved, so there's
+    // nothing to loop back to.
+    return await RunSelectedModeAsync(modeArgument.Value, repositoryRoot, pythonExecutable, ffmpegExecutable, settingsStore).ConfigureAwait(false);
+}
+
+const string settingsChoice = "Settings";
+const string exitChoice = "Exit";
+
+while (true)
+{
+    string selection = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+            .Title("What do you want to do?")
+            .AddChoiceGroup("Modes", ["Dictate", "Live", "Call"])
+            .AddChoices(settingsChoice, exitChoice));
+
+    if (selection == exitChoice)
+    {
+        return 0;
+    }
+
+    if (selection == settingsChoice)
+    {
+        await RunSettingsMenuAsync(updateChecker, availableUpdate, settingsStore).ConfigureAwait(false);
+        continue;
+    }
+
+    if (!Enum.TryParse(selection, out OrchestratorMode selectedMode))
+    {
+        // The "Modes" group header itself isn't a real choice -- selecting it (if Spectre
+        // even allows that) just redraws the menu instead of crashing on a bad Enum.Parse.
+        continue;
+    }
+
+    await RunSelectedModeAsync(selectedMode, repositoryRoot, pythonExecutable, ffmpegExecutable, settingsStore).ConfigureAwait(false);
+}
+
 // Dictate uses the plain "mic" device, Live/Call the mixed "call" bus -- see
 // Set-AudioDevices.ps1's own doc comment for the distinction. Resolved here, not inside
 // each RunXAsync, since all three need it the same way: use what's already configured,
 // or configure it now via the real script (see ResolveDevice's own doc comment).
-string devicePurpose = mode == OrchestratorMode.Dictate ? "mic" : "call";
-string device = ResolveDevice(repositoryRoot, devicePurpose);
-
-OrchestratorSettings orchestratorSettings = await settingsStore.LoadAsync().ConfigureAwait(false);
-
-return mode switch
+static async Task<int> RunSelectedModeAsync(OrchestratorMode mode, string repositoryRoot, string pythonExecutable, string ffmpegExecutable, ISettingsStore settingsStore)
 {
-    OrchestratorMode.Dictate => await RunDictateAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory),
-    OrchestratorMode.Live => await RunLiveAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory),
-    OrchestratorMode.Call => await RunCallAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory),
-    _ => 1,
-};
+    string devicePurpose = mode == OrchestratorMode.Dictate ? "mic" : "call";
+    string device = ResolveDevice(repositoryRoot, devicePurpose);
+    OrchestratorSettings orchestratorSettings = await settingsStore.LoadAsync().ConfigureAwait(false);
+
+    return mode switch
+    {
+        OrchestratorMode.Dictate => await RunDictateAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
+        OrchestratorMode.Live => await RunLiveAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
+        OrchestratorMode.Call => await RunCallAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
+        _ => 1,
+    };
+}
 
 static async Task<int> RunDictateAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
 {

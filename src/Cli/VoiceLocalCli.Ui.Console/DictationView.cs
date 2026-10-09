@@ -16,7 +16,9 @@ namespace VoiceLocalCli.Ui.Console;
 /// </summary>
 internal sealed class DictationView
 {
-    private const int MaxVisibleLines = 12;
+    // Entries, not lines: LiveLayoutRenderer renders each one as a meta line plus a text
+    // line plus a blank separator, so 8 entries is already ~24 terminal rows.
+    private const int MaxVisibleLines = 8;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(150);
 
     // GitHub Dark-inspired accents, applied sparingly (foreground only, never a

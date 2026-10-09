@@ -146,22 +146,16 @@ a human.
      Settings downloads and restarts into the new version cleanly.
    This repo is on GitHub now (private, pushed 2026-10-09), but no tag has been pushed
    yet -- this whole checklist is blocked on the first one.
-10. **The Esc-to-stop fix (`ConsoleEscapeWatcher`, 2026-10-09) could not be fully
-    verified by the agent that built it.** The bug it fixes was reported live: Esc did
-    nothing while dictating, with the orchestrator's own console window actually
-    focused -- ruling out the "wrong window has focus" explanation the original
-    `System.Console.KeyAvailable`-based implementation's own try/catch assumed. The new
-    implementation opens `CONIN$` directly and reads raw `INPUT_RECORD`s via
-    `ReadConsoleInput`/`PeekConsoleInput`, bypassing whatever `System.Console`'s own
-    redirect-detection heuristic was doing (a documented class of .NET bug under
-    Windows Terminal/ConPTY). What was verified: it builds, and a normal `dotnet run`
-    launch still reaches the same points it did before (no new crash). What was NOT
-    verified, because it needs a real keypress in a real terminal: that Esc is actually
-    now detected and stops the session. If it still doesn't work, the next thing to
-    check is `CreateFile("CONIN$", ...)`'s actual return value/`GetLastError` in that
-    specific terminal -- this fix assumes opening it succeeds wherever
-    `System.Console.KeyAvailable` was failing, which was reasoned from documented
-    ConPTY behavior, not confirmed against the exact terminal this was reported in.
+10. **The Esc-to-stop fix (`ConsoleEscapeWatcher`, 2026-10-09) -- CONFIRMED WORKING**,
+    live, by Frank, in the terminal it was originally broken in (screenshot evidence:
+    "Dictation finished." printed and the process returned to the shell after pressing
+    Esc). The bug it fixes was reported live: Esc did nothing while dictating, with the
+    orchestrator's own console window actually focused -- ruling out the "wrong window
+    has focus" explanation the original `System.Console.KeyAvailable`-based
+    implementation's own try/catch assumed. The fix opens `CONIN$` directly and reads
+    raw `INPUT_RECORD`s via `ReadConsoleInput`/`PeekConsoleInput`, bypassing whatever
+    `System.Console`'s own redirect-detection heuristic was doing (a documented class of
+    .NET bug under Windows Terminal/ConPTY).
 11. **Device resolution now runs `Set-AudioDevices.ps1` interactively instead of asking
     for a device name as free text** (2026-10-09, also from live feedback), for
     whichever device (`mic` for Dictate, `call` for Live/Call) isn't already in
@@ -180,3 +174,30 @@ a human.
     `tests/Cli.Tests/TESTING.md`) -- not run for real. Confirm it actually offers the
     current value, accepts a new path, and that the next Dictate/Live/Call session
     really writes its recordings there instead of the default `<repo>\recordings`.
+13. **The main menu now loops instead of exiting after a session, and has an explicit
+    "Exit" choice** (2026-10-09, reported live: after pressing Esc, the app returned to
+    the shell instead of the menu, with no way back in short of relaunching). Dictate/
+    Live/Call now sit under a `SelectionPrompt` choice group labelled "Modes" (Spectre's
+    `AddChoiceGroup`), visually separated from "Settings"/"Exit" below it, per the same
+    live feedback ("die Alltagsmodi und Exit und Settings... etwas besser visuell
+    trennen"). Verified: `dotnet build`/`dotnet test` pass, and `--mode` (what the
+    desktop shortcuts use) still runs once and exits -- unchanged, deliberately: a
+    shortcut should do the one thing it was made for and close, not open a menu loop
+    behind it. NOT verified: the interactive menu itself, since nothing about navigating
+    a `SelectionPrompt` can be driven from a non-interactive tool session. In particular,
+    confirm pressing Enter on the "Modes" group header itself (if that's even reachable)
+    doesn't do anything surprising -- the code defensively falls through to redrawing the
+    menu via `Enum.TryParse` rather than crashing, but that fallback path itself has
+    never been exercised for real.
+14. **Transcript lines now render as a muted meta line (time, and the focused window
+    for Dictate) followed by the spoken text on its own line**, instead of one
+    run-together line (reported live: "die Trennung zwischen welches Fenster ist gerade
+    aktiv und dem eigentlichen Text" wasn't clear enough). The parsing regex was checked
+    against both real line shapes this needs to handle (`HH:MM:SS [window] text` from
+    dictate.py, `HH:MM:SS text` from transcribe_live.py) using .NET's own regex engine,
+    confirming `Match.Groups[2].Success` is `false` (not an empty string) when the
+    bracketed-window group doesn't apply, not just that the text visually looked right.
+    `MaxVisibleLines` dropped from 12 to 8 entries to account for each one now taking
+    2-3 terminal rows instead of 1. Not verified: how this actually looks in a real
+    terminal, including whether 8 entries is now too few or still too many given a
+    typical window height.

@@ -17,7 +17,8 @@ namespace VoiceLocalCli.Ui.Console;
 /// </summary>
 internal sealed class LiveTranscriptView
 {
-    private const int MaxVisibleLines = 12;
+    // Entries, not lines -- see DictationView's identical constant for why 8, not 12.
+    private const int MaxVisibleLines = 8;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(150);
 
     // Same palette as DictationView -- see docs/UI_THEME.md. Plain hex strings for markup,
