@@ -1,0 +1,118 @@
+<!--
+  Source for social-preview.png (1280x640, GitHub's social preview image size).
+  Matches the style already established on dotnet-architecture-hexagonal-template's own
+  social preview (serif heading on cream, terracotta underline accent, muted sans-serif
+  subtitle/topics row, divider plus name/role footer): see docs/adr/ for why this repo
+  follows that repo's conventions.
+
+  Regenerate: open this file in a browser at (or resize the window to) 1280x640, screenshot
+  the page, and if the capture isn't natively 1280x640 (Chrome/the screenshot tool may
+  apply its own scale factor), crop to the page's actual rendered size first, then resize
+  to exactly 1280x640: done this way on 2026-10-09 because the capture came back at a
+  consistent 0.90625 scale of the CSS pixel size, not 1:1.
+
+  GitHub does not expose a way to set a repository's social preview image via the API;
+  it's a Settings, General, Social preview upload, web-UI only, and (confirmed directly,
+  2026-10-09) not even offered there for a private repository. Upload this PNG by hand
+  once the repo is public, or once you want to confirm it looks right before then.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600&family=Inter:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: #FBF8F3;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .canvas {
+    position: relative;
+    width: 1280px;
+    height: 640px;
+    background: #FBF8F3;
+  }
+
+  .title {
+    position: absolute;
+    left: 90px;
+    top: 140px;
+    font-family: 'Lora', serif;
+    font-weight: 500;
+    font-size: 72px;
+    color: #191713;
+    letter-spacing: -0.5px;
+  }
+
+  .underline {
+    position: absolute;
+    left: 90px;
+    top: 253px;
+    width: 65px;
+    height: 5px;
+    background: #A4552B;
+  }
+
+  .subtitle {
+    position: absolute;
+    left: 90px;
+    top: 298px;
+    font-size: 28px;
+    font-weight: 400;
+    color: #191713;
+  }
+
+  .topics {
+    position: absolute;
+    left: 90px;
+    top: 353px;
+    font-size: 20px;
+    font-weight: 400;
+    color: #B1AAA0;
+  }
+
+  .divider {
+    position: absolute;
+    left: 90px;
+    top: 548px;
+    width: 1100px;
+    height: 1px;
+    background: #E6DCCD;
+  }
+
+  .footer-name {
+    position: absolute;
+    left: 90px;
+    top: 568px;
+    font-family: 'Lora', serif;
+    font-weight: 600;
+    font-size: 24px;
+    color: #191713;
+  }
+
+  .footer-role {
+    position: absolute;
+    right: 90px;
+    top: 572px;
+    font-size: 20px;
+    font-weight: 400;
+    color: #6D6152;
+  }
+</style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="title">voice-local-cli</div>
+    <div class="underline"></div>
+    <div class="subtitle">Local, offline voice dictation for AI coding assistants and your own tools</div>
+    <div class="topics">.NET 10&nbsp;&nbsp;&middot;&nbsp;&nbsp;Python&nbsp;&nbsp;&middot;&nbsp;&nbsp;faster-whisper&nbsp;&nbsp;&middot;&nbsp;&nbsp;Spectre.Console</div>
+    <div class="divider"></div>
+    <div class="footer-name">Frank Trauernicht</div>
+    <div class="footer-role">Senior Software Engineer</div>
+  </div>
+</body>
+</html>

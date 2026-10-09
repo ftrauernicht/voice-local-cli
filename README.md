@@ -6,9 +6,6 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Renovate enabled](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](renovate.json)
 
-> These badges only render once this repo has a GitHub remote and at least one CI run on
-> `main` -- both still pending, see "Project status" below.
-
 Local, fully offline speech-to-text for your own machine: dictate hands-free into
 whatever window has focus (an editor, a chat, an AI coding assistant's prompt box). No
 audio ever leaves the machine except the one-time download of the speech models
@@ -23,17 +20,16 @@ repo can do (full call recording, live transcription, speaker diarization) exist
 secondary, technically-curious exploration of the same local speech models, documented
 below, but it is explicitly not the feature this project is built around.
 
-### A note on recording other people (Call/Live mode)
-
-Call and Live mode record and transcribe **the full audio of a call**, not just your own
-microphone. In Germany, recording or transcribing another person's spoken words without
-their knowledge is a criminal offense under § 201 StGB regardless of what the recording
-is later used for, and similar consent requirements exist in most other jurisdictions.
-**Only use these modes with the explicit, informed consent of everyone on the call.**
-They are included here because they demonstrate what else a local, offline speech
-pipeline can do, not because this project encourages recording group calls. Dictate mode
-never has this problem: it only ever records your own microphone, into your own focused
-window.
+> [!WARNING]
+> Call and Live mode record and transcribe **the full audio of a call**, not just your
+> own microphone. In Germany, recording or transcribing another person's spoken words
+> without their knowledge is a criminal offense under § 201 StGB regardless of what the
+> recording is later used for, and similar consent requirements exist in most other
+> jurisdictions. **Only use these modes with the explicit, informed consent of everyone
+> on the call.** They are included here because they demonstrate what else a local,
+> offline speech pipeline can do, not because this project encourages recording group
+> calls. Dictate mode never has this problem: it only ever records your own microphone,
+> into your own focused window.
 
 ## Project status
 
@@ -46,9 +42,6 @@ a correctly finalized recording, a clean stop, and for Call mode a real transcri
 pass). What's still outstanding is specifically the live view's visual correctness and
 real typing into a focused window, which need a human at a real keyboard to judge -- see
 `docs/MANUAL_VERIFICATION.md`.
-
-This repo is not yet pushed to GitHub. It is being built up locally first; see
-`docs/adr/` once decisions are recorded there.
 
 ## At a glance
 
@@ -150,14 +143,8 @@ menu. Running from a source checkout (`dotnet run`, the normal case while develo
 skips the check entirely, since there's no installed copy to update. No release has been
 published yet, so there is currently nothing to update to.
 
-## Roadmap
-
-- A coverage badge that reflects the live percentage, once this repo has a GitHub remote
-  to test the mechanism against.
-- Publish a first tagged release so the update mechanism above has something real to
-  check against and `.github/workflows/release.yml` gets exercised for the first time.
-- See `docs/adr/` for the architecture decisions recorded so far, and
-  `docs/MANUAL_VERIFICATION.md` for what's confirmed only by hand, not by CI.
+See `docs/adr/` for the architecture decisions recorded so far, and
+`docs/MANUAL_VERIFICATION.md` for what's confirmed only by hand, not by CI.
 
 ## License
 
