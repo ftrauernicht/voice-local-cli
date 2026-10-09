@@ -1,16 +1,12 @@
 # Branch protection for `main`
 
-## A real constraint while this repo is private
+## Why two rulesets, both in Active mode
 
-On GitHub Free, a ruleset's rules only *enforce* on **public** repositories. A private
-repo under a Free account can have a ruleset configured in the UI, but it won't actually
-block anything -- this is a documented GitHub limitation, not a bug in this setup.
-
-Decided for this project: stay on the Free plan, create both rulesets below now in
-**Evaluate** (dry-run) mode, and treat "no direct pushes to `main`" as a personal-
-discipline convention until the repo goes public -- at which point enforcement becomes
-real for free, with no plan change needed. (The alternative, upgrading to GitHub Pro
-now for immediate real enforcement, was considered and explicitly declined.)
+This repo is public, on the GitHub Free plan. A ruleset's rules only *enforce* on
+**public** repositories under Free -- a private repo can have one configured in the UI,
+but it won't actually block anything, a documented GitHub limitation, not a bug in this
+setup. Staying on Free was a deliberate choice over upgrading to Pro for enforcement
+while the repo was still private.
 
 ## Two rulesets, not one -- and why
 
@@ -42,8 +38,11 @@ review":
   future co-maintainer to Admin also hands them this same force-push bypass -- worth
   remembering before doing that.
 
-Test both in **Evaluate** mode before flipping to **Active** (moot while private per
-above, but worth doing once to confirm the configuration is correct).
+Both rulesets are created directly in **Active** mode via the API (`PUT/POST
+repos/{owner}/{repo}/rulesets`) -- confirmed by reading each one back afterward:
+`require-pr-review` reports `current_user_can_bypass: never`, `protect-branch-integrity`
+reports `current_user_can_bypass: always` for the repo owner, matching the bypass split
+above exactly.
 
 ## Required status checks (names from the `name:` of each job)
 
