@@ -8,6 +8,7 @@ Does not produce word-level timestamps itself (the pre-converted model fails on 
 transcribe_chunk). For Call mode, transcribe.py recovers word timestamps afterwards via
 Forced Alignment per segment -- see _align_backend.py and README.md, "Model choice".
 """
+
 from pathlib import Path
 
 import numpy as np
@@ -93,7 +94,7 @@ def transcribe_long(
     kwargs = {"hotwords": hotwords} if hotwords else {}
     segments: list[dict] = []
     for chunk_start in range(0, len(samples), chunk_frames):
-        chunk = samples[chunk_start: chunk_start + chunk_frames]
+        chunk = samples[chunk_start : chunk_start + chunk_frames]
         if chunk.size == 0 or np.abs(chunk).max() < 0.01:
             continue
         offset = chunk_start / sample_rate

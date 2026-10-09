@@ -7,6 +7,7 @@ orchestrator (a .NET console app, see README "Roadmap") can depend on without ha
 parse this module's human-readable, translatable prose. See CONTRACT.md for the full
 event vocabulary.
 """
+
 import json
 import sys
 

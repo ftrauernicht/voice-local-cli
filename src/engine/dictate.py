@@ -30,6 +30,7 @@ Uses a local hotwords list (_hotwords.py) to improve recognition of frequent nam
 (e.g. colleague names, tool names like "wmux"). The list isn't maintained by hand -- it
 grows through a prompt at the end of each session, once a word has come up often enough.
 """
+
 import argparse
 import sys
 import time
@@ -63,6 +64,7 @@ POLL_SECONDS = 0.2  # how often newly available frames are checked
 def active_window_title() -> str:
     try:
         import pygetwindow as gw
+
         win = gw.getActiveWindow()
         return win.title if win else "(unknown)"
     except Exception:
@@ -87,8 +89,13 @@ def wait_for_segment(path: Path) -> None:
 
 
 def process_and_type(
-    path: Path, data_offset: int, start_frame: int, end_frame: int,
-    transcribe, out_file, window_before: str,
+    path: Path,
+    data_offset: int,
+    start_frame: int,
+    end_frame: int,
+    transcribe,
+    out_file,
+    window_before: str,
 ) -> str | None:
     """Transcribes an audio chunk and types it, provided focus hasn't changed since
     `window_before`. Returns the transcribed text (even if it was only logged instead of
@@ -132,9 +139,11 @@ def review_hotword_candidates(session_texts: list[str]) -> None:
 
     c.info("\nNew hotword candidates found (otherwise often misrecognized):")
     for key, entry in due:
-        answer = input(
-            f"  '{entry['display']}' ({entry['count']}x total) -- add to the hotwords list? [y/N/never] "
-        ).strip().lower()
+        answer = (
+            input(f"  '{entry['display']}' ({entry['count']}x total) -- add to the hotwords list? [y/N/never] ")
+            .strip()
+            .lower()
+        )
         if answer == "y":
             _hotwords.add_hotword(entry["display"])
             c.ok(f"'{entry['display']}' added.")
@@ -146,25 +155,41 @@ def review_hotword_candidates(session_texts: list[str]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "prefix", type=Path,
+        "prefix",
+        type=Path,
         help="Path prefix of the segment files (without '_NNN.wav'), as ffmpeg's -f segment creates them",
     )
-    parser.add_argument("--pause-seconds", type=float, default=0.6,
-                         help="Silence duration that closes off a chunk")
-    parser.add_argument("--vad-aggressiveness", type=int, default=2, choices=[0, 1, 2, 3],
-                         help="webrtcvad sensitivity (0 = least aggressive at detecting silence, 3 = most)")
+    parser.add_argument("--pause-seconds", type=float, default=0.6, help="Silence duration that closes off a chunk")
     parser.add_argument(
-        "--max-buffer-seconds", type=float, default=15.0,
+        "--vad-aggressiveness",
+        type=int,
+        default=2,
+        choices=[0, 1, 2, 3],
+        help="webrtcvad sensitivity (0 = least aggressive at detecting silence, 3 = most)",
+    )
+    parser.add_argument(
+        "--max-buffer-seconds",
+        type=float,
+        default=15.0,
         help="Safety net: close off a chunk after this many seconds even without a pause (long monologue)",
     )
-    parser.add_argument("--backend", choices=["auto", "cpu", "gpu"], default="auto",
-                         help="auto = use GPU if available, else CPU (default)")
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "cpu", "gpu"],
+        default="auto",
+        help="auto = use GPU if available, else CPU (default)",
+    )
     parser.add_argument("--language", default="de")
-    parser.add_argument("--stale-after", type=float, default=16.0,
-                         help="Recording is considered finished after this many seconds without file growth")
+    parser.add_argument(
+        "--stale-after",
+        type=float,
+        default=16.0,
+        help="Recording is considered finished after this many seconds without file growth",
+    )
     parser.add_argument("--out", type=Path, help="Log file (default: prefix with .dictate.txt)")
     parser.add_argument(
-        "--keep-audio", action="store_true",
+        "--keep-audio",
+        action="store_true",
         help="Don't delete segment files (default: delete each finished segment right after transcribing it)",
     )
     args = parser.parse_args()
@@ -180,9 +205,9 @@ def main() -> None:
     data_offset = find_data_offset(current)
 
     processed_frames = 0  # start of the still-unfinished chunk
-    scanned_frames = 0    # how far VAD has classified so far
-    silence_run = 0       # consecutive silent frames since the last speech
-    had_speech = False    # whether any speech occurred since processed_frames
+    scanned_frames = 0  # how far VAD has classified so far
+    silence_run = 0  # consecutive silent frames since the last speech
+    had_speech = False  # whether any speech occurred since processed_frames
 
     last_size = -1
     last_growth_time = time.time()
@@ -224,8 +249,9 @@ def main() -> None:
                 # This segment isn't growing anymore -- read to the end, no VAD pause
                 # needed since nothing more will ever be appended.
                 total_frames = available_frames(current, data_offset)
-                text = process_and_type(current, data_offset, processed_frames, total_frames,
-                                         transcribe, out_file, window_before)
+                text = process_and_type(
+                    current, data_offset, processed_frames, total_frames, transcribe, out_file, window_before
+                )
                 if text:
                     session_texts.append(text)
                 if not args.keep_audio:
@@ -252,7 +278,7 @@ def main() -> None:
                 chunk_end = scanned_frames + new_frame_count * VAD_FRAME_SAMPLES
                 raw = read_frame_range_bytes(current, data_offset, scanned_frames, chunk_end)
                 for i in range(new_frame_count):
-                    frame = raw[i * VAD_FRAME_BYTES:(i + 1) * VAD_FRAME_BYTES]
+                    frame = raw[i * VAD_FRAME_BYTES : (i + 1) * VAD_FRAME_BYTES]
                     if vad.is_speech(frame, SAMPLE_RATE):
                         had_speech = True
                         silence_run = 0
@@ -264,8 +290,9 @@ def main() -> None:
             overflow = (scanned_frames - processed_frames) >= max_buffer_frames
 
             if pause_hit or overflow:
-                text = process_and_type(current, data_offset, processed_frames, scanned_frames,
-                                         transcribe, out_file, window_before)
+                text = process_and_type(
+                    current, data_offset, processed_frames, scanned_frames, transcribe, out_file, window_before
+                )
                 if text:
                     session_texts.append(text)
                 processed_frames = scanned_frames

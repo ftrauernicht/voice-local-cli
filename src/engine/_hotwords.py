@@ -13,6 +13,7 @@ anything.
 Both files are git-ignored (like devices.local.json): they can contain real names and
 client-specific jargon that have no place in a shared repo.
 """
+
 import json
 import re
 import time
@@ -30,7 +31,8 @@ DEFAULT_THRESHOLD = 3
 # dominate every frequency count instead of real, recurring jargon. This list is itself
 # German vocabulary (the thing being filtered), so it stays German regardless of the
 # project's English-language convention.
-STOPWORDS_DE = frozenset("""
+STOPWORDS_DE = frozenset(
+    """
 aber alle allem allen aller alles als also am an ander andere anderem anderen anderer
 anderes anderm andern anders auch auf aus bei bin bis bist da damit dann das dasselbe
 dazu dein deine deinem deinen deiner deines dem demselben den denn denselben der derer
@@ -64,7 +66,8 @@ warum weitere weiterhin weiters welche welchem welchen welcher welches wem wen w
 wenige weniger wenigstens wessen wetten wiederum wieso wieviel wieviele wirklich wohl
 wohlgemerkt worden zehn zeitweise ziemlich zugleich zuletzt zumal zunächst zurzeit
 zusammen zuviel zuwenig zwecks zwölf
-""".split())
+""".split()
+)
 
 
 def _read_json(path: Path, default: dict) -> dict:
@@ -105,10 +108,7 @@ def tokenize(text: str) -> list[str]:
     capitalization as a signal for proper nouns -- in German, every noun is capitalized,
     not just names, so it wouldn't distinguish "Moritz" from "Tisch" (table)."""
     words = re.findall(r"[A-Za-zÄÖÜäöüß]+", text)
-    return [
-        w for w in words
-        if len(w) >= MIN_WORD_LENGTH and w.lower() not in STOPWORDS_DE
-    ]
+    return [w for w in words if len(w) >= MIN_WORD_LENGTH and w.lower() not in STOPWORDS_DE]
 
 
 def update_counts(texts: list[str]) -> None:
@@ -143,7 +143,8 @@ def due_candidates(threshold: int = DEFAULT_THRESHOLD) -> list[tuple[str, dict]]
     already_added = {w.lower() for w in hotwords_data.get("hotwords", [])}
 
     result = [
-        (key, entry) for key, entry in counts.items()
+        (key, entry)
+        for key, entry in counts.items()
         if entry["count"] >= threshold and key not in already_added and key not in dismissed
     ]
     result.sort(key=lambda item: item[1]["count"], reverse=True)

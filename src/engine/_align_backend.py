@@ -7,6 +7,7 @@ both rely on the same Meta MMS checkpoint under CC-BY-NC 4.0, not usable commerc
 client work (this project is one), that would be a real licensing problem, not a software
 bug -- deliberately avoided.
 """
+
 import numpy as np
 
 import _console as c
@@ -88,9 +89,7 @@ def align_words(samples: np.ndarray, text: str, language: str, sample_rate: int 
             word_slices.append(slice(start, len(expected_ids)))
 
         targets = torch.tensor([expected_ids], dtype=torch.int32)
-        aligned, scores = torchaudio.functional.forced_align(
-            emissions, targets, blank=vocab.get("<pad>", 0)
-        )
+        aligned, scores = torchaudio.functional.forced_align(emissions, targets, blank=vocab.get("<pad>", 0))
         aligned = aligned[0]
 
         num_frames = emissions.size(1)
@@ -109,11 +108,13 @@ def align_words(samples: np.ndarray, text: str, language: str, sample_rate: int 
         result = []
         for original, sl in zip(originals, word_slices):
             word_spans = spans[sl]
-            result.append({
-                "start": word_spans[0][0] * seconds_per_frame,
-                "end": word_spans[-1][1] * seconds_per_frame,
-                "text": " " + original,
-            })
+            result.append(
+                {
+                    "start": word_spans[0][0] * seconds_per_frame,
+                    "end": word_spans[-1][1] * seconds_per_frame,
+                    "text": " " + original,
+                }
+            )
         return result
     except Exception as exc:
         c.warn(f"Forced alignment failed, falling back to segment boundaries: {exc}")

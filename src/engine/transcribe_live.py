@@ -10,6 +10,7 @@ Uses an Intel GPU via OpenVINO automatically if available (significantly faster 
 see README.md) -- otherwise faster-whisper/CPU as before, with no change for machines
 without a matching GPU.
 """
+
 import argparse
 import sys
 import time
@@ -27,7 +28,7 @@ warnings.filterwarnings("ignore")  # pyannote/numpy warnings would otherwise spa
 SAMPLE_RATE = 16000
 BYTES_PER_SAMPLE = 2  # 16-bit mono, as recorded by the capture process
 TRAILING_MARGIN_SECONDS = 1.0  # safety margin at the recording edge, in case a word there
-                                 # hasn't finished being spoken yet
+# hasn't finished being spoken yet
 
 
 def find_data_offset(path: Path) -> int:
@@ -96,11 +97,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("audio", type=Path, help="WAV file currently being written by ffmpeg")
     parser.add_argument("--interval", type=float, default=8.0, help="Seconds between two chunks")
-    parser.add_argument("--backend", choices=["auto", "cpu", "gpu"], default="auto",
-                         help="auto = use GPU if available, else CPU (default)")
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "cpu", "gpu"],
+        default="auto",
+        help="auto = use GPU if available, else CPU (default)",
+    )
     parser.add_argument("--language", default="de")
-    parser.add_argument("--stale-after", type=float, default=20.0,
-                         help="Recording is considered finished after this many seconds without file growth")
+    parser.add_argument(
+        "--stale-after",
+        type=float,
+        default=20.0,
+        help="Recording is considered finished after this many seconds without file growth",
+    )
     parser.add_argument("--out", type=Path, help="Transcript file (default: WAV path with .live.txt)")
     args = parser.parse_args()
 

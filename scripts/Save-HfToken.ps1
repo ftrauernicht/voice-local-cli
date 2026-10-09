@@ -15,6 +15,9 @@
     Prompts for the token with hidden input (not echoed to the screen).
 #>
 [CmdletBinding()]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSAvoidUsingConvertToSecureStringWithPlainText', '',
+    Justification = 'The token already exists as plaintext in the source file the caller supplied via -FromFile (that is the whole point of that parameter); converting it to a SecureString is what removes the plaintext from memory, not what introduces it. The source file itself is deleted right after, see $KeepSourceFile below.')]
 param(
     [string] $FromFile,
     [switch] $KeepSourceFile

@@ -4,6 +4,8 @@ src/engine/__pycache__/
 **/__pycache__/
 *.pyc
 src/engine/*.egg-info/
+src/engine/.coverage
+src/engine/.ruff_cache/
 
 # Locally downloaded models (large, re-downloaded on demand)
 src/engine/ov-models/

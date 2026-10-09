@@ -8,6 +8,7 @@ Two transcription paths for the text itself:
   2026-10-09: German, English); for an unsupported language, --backend auto falls back to
   the CPU path automatically.
 """
+
 import argparse
 import os
 import wave
@@ -51,9 +52,7 @@ def transcribe(
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
     audio = load_wav_16k_mono(audio_path)
     kwargs = {"hotwords": hotwords} if hotwords else {}
-    segments, _info = model.transcribe(
-        audio, language=language, vad_filter=True, word_timestamps=True, **kwargs
-    )
+    segments, _info = model.transcribe(audio, language=language, vad_filter=True, word_timestamps=True, **kwargs)
     seg_list: list[dict] = []
     words: list[dict] = []
     for s in segments:
@@ -110,9 +109,7 @@ def diarize(audio_path: Path, hf_token: str) -> list[dict]:
     import torch
     from pyannote.audio import Pipeline
 
-    pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1", token=hf_token
-    )
+    pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=hf_token)
     # Passing a path instead of a pre-loaded tensor would use torchcodec internally for
     # decoding -- its native DLLs (libtorchcodec_core4/5.dll) don't match the installed
     # ffmpeg version here (as of 2026-10-08). Reading it ourselves (see
@@ -156,18 +153,14 @@ def group_by_speaker(words: list[dict], turns: list[dict]) -> list[dict]:
     for w in words:
         speaker = assign_speaker(w, turns)
         if current_words and speaker != current_speaker:
-            lines.append(
-                {"start": current_start, "speaker": current_speaker, "text": "".join(current_words).strip()}
-            )
+            lines.append({"start": current_start, "speaker": current_speaker, "text": "".join(current_words).strip()})
             current_words = []
         if not current_words:
             current_start = w["start"]
         current_speaker = speaker
         current_words.append(w["text"])
     if current_words:
-        lines.append(
-            {"start": current_start, "speaker": current_speaker, "text": "".join(current_words).strip()}
-        )
+        lines.append({"start": current_start, "speaker": current_speaker, "text": "".join(current_words).strip()})
     return lines
 
 
@@ -175,8 +168,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("audio", type=Path)
     parser.add_argument("--model", default="large-v3-turbo")
-    parser.add_argument("--backend", choices=["auto", "cpu", "gpu"], default="auto",
-                         help="auto = use GPU+alignment if available and the language is supported, else CPU (default)")
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "cpu", "gpu"],
+        default="auto",
+        help="auto = use GPU+alignment if available and the language is supported, else CPU (default)",
+    )
     parser.add_argument("--language", default="de")
     parser.add_argument("--no-diarization", action="store_true")
     args = parser.parse_args()
@@ -186,10 +183,7 @@ def main() -> None:
         raise SystemExit(1)
 
     use_gpu = (
-        args.backend in ("auto", "gpu")
-        and al.is_supported(args.language)
-        and ov.is_available()
-        and ov.ensure_model()
+        args.backend in ("auto", "gpu") and al.is_supported(args.language) and ov.is_available() and ov.ensure_model()
     )
     if args.backend == "gpu" and not use_gpu:
         c.warn("GPU backend requested, but not available or the language isn't supported -- falling back to CPU.")

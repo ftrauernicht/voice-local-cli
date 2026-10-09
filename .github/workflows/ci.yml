@@ -23,7 +23,13 @@ permissions:
 jobs:
   python-ci:
     name: Python (lint + tests + coverage)
-    runs-on: ubuntu-latest
+    # Windows, not ubuntu-latest: the engine is Windows-only in practice (ffmpeg dshow
+    # capture, pyautogui typing, pygetwindow focus detection), and dictate.py's import of
+    # pyautogui pulls in mouseinfo, which reads os.environ['DISPLAY'] at import time and
+    # raises KeyError on a headless Linux runner with no X server -- found by actually
+    # pushing to GitHub and watching this job fail (ubuntu-latest had never been run for
+    # real before that), not by local testing, which only ever ran on Windows anyway.
+    runs-on: windows-latest
     defaults:
       run:
         working-directory: src/engine
