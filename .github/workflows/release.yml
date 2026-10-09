@@ -1,0 +1,59 @@
+name: Release
+
+# Builds and publishes a Velopack release whenever a vX.Y.Z tag is pushed -- see
+# docs/adr/0004-velopack-for-auto-updates.md for why Velopack over a bespoke updater,
+# winget, or MSIX. Not yet exercised against a real GitHub remote (this repo hasn't been
+# pushed yet) -- see docs/MANUAL_VERIFICATION.md for what that means has NOT been
+# confirmed here, as opposed to verified against the real vpk CLI's documented flags.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, pack, and publish the Windows release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Determine the version from the tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish a self-contained single-file win-x64 build
+        run: >
+          dotnet publish src/Cli/VoiceLocalCli.Ui.Console -c Release -r win-x64
+          --self-contained -p:PublishSingleFile=true
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish
+
+      - name: Install the Velopack CLI (vpk)
+        run: dotnet tool install -g vpk
+
+      - name: Pack the Velopack release
+        # --icon omitted: no .ico version of docs/branding/icon.svg exists yet (the brand
+        # direction itself hasn't been confirmed) -- add it here once one does.
+        run: >
+          vpk pack --packId VoiceLocalCli --packVersion ${{ steps.version.outputs.version }}
+          --packDir publish --mainExe VoiceLocalCli.exe --packTitle voice-local-cli
+          --packAuthors "Frank Trauernicht" --outputDir releases
+
+      - name: Upload to GitHub Releases
+        run: >
+          vpk upload github --repoUrl https://github.com/ftrauernicht/voice-local-cli
+          --token ${{ secrets.GITHUB_TOKEN }} --outputDir releases
+          --tag ${{ github.ref_name }} --publish

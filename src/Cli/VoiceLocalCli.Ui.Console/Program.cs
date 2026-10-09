@@ -2,13 +2,29 @@ using System.Diagnostics;
 
 using Spectre.Console;
 
+using Velopack;
+
+using VoiceLocalCli.Application.Ports;
 using VoiceLocalCli.Application.UseCases;
 using VoiceLocalCli.Domain;
 using VoiceLocalCli.Infrastructure;
 using VoiceLocalCli.Ui.Console;
 
+// Must run before anything else: when launched by a Velopack-produced installer/updater
+// with special hook arguments (first-run, after-update, uninstall, ...), this handles
+// them and exits immediately -- it must never run any later code in that case. A no-op
+// for a normal launch (dotnet run, or a real install's normal start).
+VelopackApp.Build().Run();
+
 AnsiConsole.Write(new FigletText("voice-local-cli").Color(new Color(0x58, 0xA6, 0xFF)));
 AnsiConsole.MarkupLine("[grey]Local, offline voice dictation -- speak, and the text types into whatever window has focus.[/]\n");
+
+var updateChecker = new VelopackUpdateChecker();
+AvailableUpdate? availableUpdate = await CheckForUpdateWithTimeoutAsync(updateChecker).ConfigureAwait(false);
+if (availableUpdate is not null)
+{
+    AnsiConsole.MarkupLine($"[#58A6FF]Update available:[/] v{availableUpdate.Version.EscapeMarkup()} -- see Settings to update.\n");
+}
 
 const string settingsChoice = "Settings";
 
@@ -22,7 +38,7 @@ while (mode is null)
 
     if (selection == settingsChoice)
     {
-        RunSettingsMenu();
+        await RunSettingsMenuAsync(updateChecker, availableUpdate).ConfigureAwait(false);
         continue;
     }
 
@@ -347,19 +363,54 @@ static OrchestratorMode? ParseModeArgument(string[] commandLineArgs)
     return null;
 }
 
-static void RunSettingsMenu()
+static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUpdate? availableUpdate)
 {
     const string createShortcutsChoice = "Create desktop shortcuts";
     const string backChoice = "Back";
 
+    string? updateChoice = availableUpdate is null ? null : $"Update to v{availableUpdate.Version}";
+    List<string> choices = [createShortcutsChoice];
+    if (updateChoice is not null)
+    {
+        choices.Add(updateChoice);
+    }
+
+    choices.Add(backChoice);
+
     string selection = AnsiConsole.Prompt(
         new SelectionPrompt<string>()
             .Title("Settings")
-            .AddChoices(createShortcutsChoice, backChoice));
+            .AddChoices(choices));
 
     if (selection == createShortcutsChoice)
     {
         CreateShortcuts();
+    }
+    else if (selection == updateChoice)
+    {
+        await AnsiConsole.Status().StartAsync(
+            "Downloading update...",
+            _ => updateChecker.DownloadAndApplyUpdateAsync()).ConfigureAwait(false);
+    }
+}
+
+static async Task<AvailableUpdate?> CheckForUpdateWithTimeoutAsync(IUpdateChecker updateChecker)
+{
+    if (!updateChecker.IsInstalled)
+    {
+        return null;
+    }
+
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+    try
+    {
+        return await updateChecker.CheckForUpdateAsync(timeout.Token).ConfigureAwait(false);
+    }
+    catch (OperationCanceledException)
+    {
+        // GitHub unreachable or just slow -- never worth blocking startup over, see
+        // IUpdateChecker's own doc comment on why a failed check is never fatal.
+        return null;
     }
 }
 

@@ -142,13 +142,21 @@ of torchaudio's built-in `MMS_FA` bundle or the `ctc-forced-aligner` package's d
 both of which rely on a Meta MMS checkpoint under CC-BY-NC 4.0 -- not usable for client
 work, which real engagements built on this engine would be.
 
+## Updates
+
+The orchestrator checks GitHub Releases for a newer version on startup (see
+`docs/adr/0004-velopack-for-auto-updates.md`) -- never automatically, never mid-session:
+finding one only shows a notice, and applying it is a separate action in the Settings
+menu. Running from a source checkout (`dotnet run`, the normal case while developing)
+skips the check entirely, since there's no installed copy to update. No release has been
+published yet, so there is currently nothing to update to.
+
 ## Roadmap
 
 - A coverage badge that reflects the live percentage, once this repo has a GitHub remote
   to test the mechanism against.
-- An auto-update mechanism for the published orchestrator exe (Velopack is the leading
-  candidate -- see `docs/adr/` once that decision is recorded; no release pipeline exists
-  yet, so there's nothing to update against today).
+- Publish a first tagged release so the update mechanism above has something real to
+  check against and `.github/workflows/release.yml` gets exercised for the first time.
 - See `docs/adr/` for the architecture decisions recorded so far, and
   `docs/MANUAL_VERIFICATION.md` for what's confirmed only by hand, not by CI.
 

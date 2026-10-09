@@ -8,4 +8,8 @@
     <ProjectReference Include="..\VoiceLocalCli.Application\VoiceLocalCli.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Velopack" />
+  </ItemGroup>
+
 </Project>

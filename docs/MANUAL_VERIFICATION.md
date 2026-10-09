@@ -131,3 +131,18 @@ a human.
    - double-click each shortcut and confirm it launches the orchestrator straight into
      its own mode (no menu prompt), from this repository as its working directory --
      all three are real sessions now (see item 7), not a "coming soon" placeholder.
+9. **The Velopack release pipeline (`.github/workflows/release.yml`) has never run.**
+   `vpk pack`/`vpk upload github`'s flags were confirmed against the real, installed
+   `vpk` CLI's own `--help` output (not guessed or taken from docs that might be stale),
+   and `VelopackApp.Build().Run()`/the startup update check were confirmed not to break
+   a normal `dotnet run` launch (`IsInstalled` correctly reports false, the check is
+   skipped, no exception, no delay). What's still unconfirmed because no tag has ever
+   been pushed and this repo isn't on GitHub yet:
+   - that `release.yml` actually succeeds on a real `windows-latest` runner,
+   - that the resulting GitHub Release's assets are actually consumable by
+     `GithubSource`/`UpdateManager.CheckForUpdatesAsync()` from a real installed copy,
+   - the full update flow end to end: install v1 for real (`vpk`'s own installer, not
+     `dotnet run`), publish v2, confirm the app notices it, confirm "Update to vX" in
+     Settings downloads and restarts into the new version cleanly.
+   First tag, first release, and this whole checklist are all blocked on the repo
+   existing on GitHub -- nothing here can be verified further until then.

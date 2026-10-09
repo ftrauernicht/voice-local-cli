@@ -6,6 +6,7 @@
   <!-- Console UI — referenced by VoiceLocalCli.Ui.Console only (enforced by an architecture test). -->
   <ItemGroup>
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+    <PackageVersion Include="Velopack" Version="1.2.161" />
   </ItemGroup>
   <!-- Test stack: xUnit v3 (Microsoft.Testing.Platform) + NSubstitute for the IProcessLauncher fakes.
        Microsoft.Testing.Extensions.CodeCoverage is the MTP-native coverage collector — NOT

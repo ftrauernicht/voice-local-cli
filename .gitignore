@@ -27,6 +27,11 @@ recordings/
 TestResults/
 coverage/
 
+# Velopack release build output (release.yml's local equivalent) -- never committed, a
+# release lives in GitHub Releases, not in this repo
+publish/
+releases/
+
 # Editor/OS noise
 .vs/
 .idea/
