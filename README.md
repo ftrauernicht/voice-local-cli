@@ -99,10 +99,9 @@ script prints at the end.
 ## Usage
 
 ```powershell
-# Pick your microphone once
-.\scripts\Set-AudioDevices.ps1
-
-# Launches the mode-selection menu (Dictate / Live / Call / Settings)
+# Launches the mode-selection menu (Dictate / Live / Call / Settings) -- the first time
+# a mode needs a device that isn't configured yet, it runs Set-AudioDevices.ps1 for you,
+# in the same window; no separate step needed, and nothing to run by hand first.
 dotnet run --project src\Cli\VoiceLocalCli.Ui.Console
 
 # Or skip the menu and go straight into a mode -- what the desktop shortcuts use

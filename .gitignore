@@ -11,8 +11,11 @@ src/engine/.ruff_cache/
 src/engine/ov-models/
 
 # Per-machine, git-ignored configuration and state (contains real device names, names,
-# and jargon -- see src/engine/_hotwords.py and scripts/_Common.ps1)
-src/engine/devices.local.json
+# and jargon -- see src/engine/_hotwords.py and scripts/_Common.ps1).
+# devices.local.json is written by scripts/Set-AudioDevices.ps1 into scripts/, not
+# src/engine/ -- this entry pointed at the wrong path until 2026-10-09, found while
+# wiring the .NET orchestrator's own device resolution into the same file.
+scripts/devices.local.json
 src/engine/hotwords.local.json
 src/engine/hotwords_candidates.local.json
 

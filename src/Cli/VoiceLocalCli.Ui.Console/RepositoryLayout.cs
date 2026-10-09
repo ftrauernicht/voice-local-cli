@@ -35,10 +35,18 @@ internal static class RepositoryLayout
     internal static string EngineScript(string repositoryRoot, string scriptFileName) =>
         Path.Combine(repositoryRoot, "src", "engine", scriptFileName);
 
-    internal static string RecordingsDirectory(string repositoryRoot)
+    /// <param name="repositoryRoot">The repository root, from <see cref="FindRepositoryRoot"/>.</param>
+    /// <param name="overridePath">From <c>OrchestratorSettings.RecordingsDirectory</c> --
+    /// null or blank falls back to the repository's own <c>recordings\</c> folder.</param>
+    internal static string RecordingsDirectory(string repositoryRoot, string? overridePath = null)
     {
-        string path = Path.Combine(repositoryRoot, "recordings");
+        string path = string.IsNullOrWhiteSpace(overridePath)
+            ? Path.Combine(repositoryRoot, "recordings")
+            : overridePath;
         Directory.CreateDirectory(path);
         return path;
     }
+
+    internal static string DevicesConfigPath(string repositoryRoot) =>
+        Path.Combine(repositoryRoot, "scripts", "devices.local.json");
 }

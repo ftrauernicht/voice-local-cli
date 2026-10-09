@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 using Spectre.Console;
 
@@ -26,6 +27,8 @@ if (availableUpdate is not null)
     AnsiConsole.MarkupLine($"[#58A6FF]Update available:[/] v{availableUpdate.Version.EscapeMarkup()} -- see Settings to update.\n");
 }
 
+ISettingsStore settingsStore = new JsonSettingsStore();
+
 const string settingsChoice = "Settings";
 
 OrchestratorMode? mode = ParseModeArgument(args);
@@ -38,7 +41,7 @@ while (mode is null)
 
     if (selection == settingsChoice)
     {
-        await RunSettingsMenuAsync(updateChecker, availableUpdate).ConfigureAwait(false);
+        await RunSettingsMenuAsync(updateChecker, availableUpdate, settingsStore).ConfigureAwait(false);
         continue;
     }
 
@@ -72,18 +75,24 @@ if (ffmpegExecutable is null)
     return 1;
 }
 
-string microphone = AnsiConsole.Ask<string>(
-    "Microphone device name (the exact ffmpeg/dshow name, e.g. from Set-AudioDevices.ps1):");
+// Dictate uses the plain "mic" device, Live/Call the mixed "call" bus -- see
+// Set-AudioDevices.ps1's own doc comment for the distinction. Resolved here, not inside
+// each RunXAsync, since all three need it the same way: use what's already configured,
+// or configure it now via the real script (see ResolveDevice's own doc comment).
+string devicePurpose = mode == OrchestratorMode.Dictate ? "mic" : "call";
+string device = ResolveDevice(repositoryRoot, devicePurpose);
+
+OrchestratorSettings orchestratorSettings = await settingsStore.LoadAsync().ConfigureAwait(false);
 
 return mode switch
 {
-    OrchestratorMode.Dictate => await RunDictateAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, microphone),
-    OrchestratorMode.Live => await RunLiveAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, microphone),
-    OrchestratorMode.Call => await RunCallAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, microphone),
+    OrchestratorMode.Dictate => await RunDictateAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory),
+    OrchestratorMode.Live => await RunLiveAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory),
+    OrchestratorMode.Call => await RunCallAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory),
     _ => 1,
 };
 
-static async Task<int> RunDictateAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone)
+static async Task<int> RunDictateAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
 {
     var settings = new DictationSettings(Microphone: microphone);
     var session = new DictationSession(
@@ -91,7 +100,7 @@ static async Task<int> RunDictateAsync(string repositoryRoot, string pythonExecu
         ffmpegExecutable,
         pythonExecutable,
         RepositoryLayout.EngineScript(repositoryRoot, "dictate.py"),
-        RepositoryLayout.RecordingsDirectory(repositoryRoot));
+        RepositoryLayout.RecordingsDirectory(repositoryRoot, recordingsDirectoryOverride));
 
     var view = new DictationView();
     session.PhaseChanged += view.OnPhaseChanged;
@@ -126,7 +135,7 @@ static async Task<int> RunDictateAsync(string repositoryRoot, string pythonExecu
     return 0;
 }
 
-static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone)
+static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
 {
     var settings = new LiveTranscriptSettings(Microphone: microphone);
     var session = new LiveTranscriptSession(
@@ -134,7 +143,7 @@ static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutab
         ffmpegExecutable,
         pythonExecutable,
         RepositoryLayout.EngineScript(repositoryRoot, "transcribe_live.py"),
-        RepositoryLayout.RecordingsDirectory(repositoryRoot));
+        RepositoryLayout.RecordingsDirectory(repositoryRoot, recordingsDirectoryOverride));
 
     var view = new LiveTranscriptView();
     session.PhaseChanged += view.OnPhaseChanged;
@@ -169,7 +178,7 @@ static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutab
     return 0;
 }
 
-static async Task<int> RunCallAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone)
+static async Task<int> RunCallAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
 {
     var settings = new CallRecordingSettings(Microphone: microphone);
     var session = new CallRecordingSession(
@@ -177,7 +186,7 @@ static async Task<int> RunCallAsync(string repositoryRoot, string pythonExecutab
         ffmpegExecutable,
         pythonExecutable,
         RepositoryLayout.EngineScript(repositoryRoot, "transcribe.py"),
-        RepositoryLayout.RecordingsDirectory(repositoryRoot));
+        RepositoryLayout.RecordingsDirectory(repositoryRoot, recordingsDirectoryOverride));
 
     session.UnrecognizedEngineOutput += line =>
         AnsiConsole.MarkupLine($"[yellow]Unrecognized engine output, ignored by the UI:[/] {line.EscapeMarkup()}");
@@ -269,30 +278,13 @@ static Layout BuildRecordingLayout(DateTimeOffset startedAt)
 // Watches for the Esc keypress on a background thread and calls requestStop when it's
 // pressed, exiting once either stopRequested or sessionEnded is already true (set from
 // elsewhere, e.g. ConsoleCtrlHandler or the engine finishing on its own) -- shared by all
-// three modes' flows.
-static Task WatchForEscapeAsync(Func<bool> stopRequested, Func<bool> sessionEnded, Action<bool> requestStop) => Task.Run(() =>
-{
-    while (!stopRequested() && !sessionEnded())
-    {
-        try
-        {
-            if (System.Console.KeyAvailable && System.Console.ReadKey(intercept: true).Key == ConsoleKey.Escape)
-            {
-                requestStop(true);
-            }
-        }
-        catch (InvalidOperationException)
-        {
-            // No real console attached (input redirected) -- Esc can never be detected
-            // this way; fall back to Ctrl+C/window-close (ConsoleCtrlHandler) as the only
-            // way to stop. Don't spin a tight retry loop on an error that will never
-            // resolve itself.
-            return;
-        }
-
-        Thread.Sleep(50);
-    }
-});
+// three modes' flows. Delegates to ConsoleEscapeWatcher (reads the real console input
+// buffer directly) rather than System.Console.KeyAvailable/ReadKey -- see that class's
+// own doc comment for why: confirmed live, with the console actually focused, that
+// System.Console's own key reading just doesn't see the keypress under this terminal.
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static Task WatchForEscapeAsync(Func<bool> stopRequested, Func<bool> sessionEnded, Action<bool> requestStop) =>
+    Task.Run(() => ConsoleEscapeWatcher.Watch(stopRequested, sessionEnded, () => requestStop(true)));
 
 static async Task<string?> ResolveHfTokenAsync(string repositoryRoot)
 {
@@ -325,6 +317,76 @@ static async Task<string?> ResolveHfTokenAsync(string repositoryRoot)
     await process.WaitForExitAsync().ConfigureAwait(false);
     string token = output.Trim();
     return token.Length > 0 ? token : null;
+}
+
+// Returns the already-configured device for `purpose` ("mic" or "call"), or runs
+// Set-AudioDevices.ps1 -- the real, interactive picker script, not a free-text prompt --
+// if nothing is configured yet. Falls back to a plain text prompt only if the script
+// itself didn't end up producing a value (e.g. it couldn't find ffmpeg, or the user
+// closed it without finishing).
+static string ResolveDevice(string repositoryRoot, string purpose)
+{
+    string? configured = ReadConfiguredDevice(repositoryRoot, purpose);
+    if (configured is not null)
+    {
+        return configured;
+    }
+
+    string label = purpose == "mic" ? "microphone" : "call-audio";
+    AnsiConsole.MarkupLine($"[grey]No {label} device configured yet -- running Set-AudioDevices.ps1...[/]\n");
+    RunSetAudioDevicesInteractively(repositoryRoot);
+
+    configured = ReadConfiguredDevice(repositoryRoot, purpose);
+    return configured ?? AnsiConsole.Ask<string>($"{label} device name (the exact ffmpeg/dshow name):");
+}
+
+static string? ReadConfiguredDevice(string repositoryRoot, string purpose)
+{
+    string path = RepositoryLayout.DevicesConfigPath(repositoryRoot);
+    if (!File.Exists(path))
+    {
+        return null;
+    }
+
+    try
+    {
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+        string property = purpose == "mic" ? "micDevice" : "callDevice";
+        return document.RootElement.TryGetProperty(property, out JsonElement element) && element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
+    }
+    catch (JsonException)
+    {
+        return null;
+    }
+}
+
+// Runs Set-AudioDevices.ps1 with no stdio redirection at all, so it inherits this
+// process's own console directly -- its Read-Host prompts work exactly as if it had been
+// run by hand in this same window, instead of needing a separate PowerShell window the
+// way the README used to describe.
+static void RunSetAudioDevicesInteractively(string repositoryRoot)
+{
+    string scriptPath = Path.Combine(repositoryRoot, "scripts", "Set-AudioDevices.ps1");
+    if (!File.Exists(scriptPath))
+    {
+        AnsiConsole.MarkupLine($"[red]Could not find {scriptPath.EscapeMarkup()}.[/]");
+        return;
+    }
+
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = "powershell.exe",
+        UseShellExecute = false,
+        WorkingDirectory = Path.GetDirectoryName(scriptPath)!,
+    };
+    startInfo.ArgumentList.Add("-NoProfile");
+    startInfo.ArgumentList.Add("-File");
+    startInfo.ArgumentList.Add(scriptPath);
+
+    using Process? process = Process.Start(startInfo);
+    process?.WaitForExit();
 }
 
 static string? ResolveFfmpegPath() => ResolveOnPath("ffmpeg.exe");
@@ -363,13 +425,15 @@ static OrchestratorMode? ParseModeArgument(string[] commandLineArgs)
     return null;
 }
 
-static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUpdate? availableUpdate)
+static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUpdate? availableUpdate, ISettingsStore settingsStore)
 {
     const string createShortcutsChoice = "Create desktop shortcuts";
+    const string changeDevicesChoice = "Change audio devices";
+    const string setFolderChoice = "Set recordings/transcripts folder";
     const string backChoice = "Back";
 
     string? updateChoice = availableUpdate is null ? null : $"Update to v{availableUpdate.Version}";
-    List<string> choices = [createShortcutsChoice];
+    List<string> choices = [createShortcutsChoice, changeDevicesChoice, setFolderChoice];
     if (updateChoice is not null)
     {
         choices.Add(updateChoice);
@@ -386,12 +450,53 @@ static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUp
     {
         CreateShortcuts();
     }
+    else if (selection == changeDevicesChoice)
+    {
+        ChangeAudioDevices();
+    }
+    else if (selection == setFolderChoice)
+    {
+        await SetRecordingsFolderAsync(settingsStore).ConfigureAwait(false);
+    }
     else if (selection == updateChoice)
     {
         await AnsiConsole.Status().StartAsync(
             "Downloading update...",
             _ => updateChecker.DownloadAndApplyUpdateAsync()).ConfigureAwait(false);
     }
+}
+
+static void ChangeAudioDevices()
+{
+    string repositoryRoot;
+    try
+    {
+        repositoryRoot = RepositoryLayout.FindRepositoryRoot();
+    }
+    catch (InvalidOperationException ex)
+    {
+        AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
+        return;
+    }
+
+    RunSetAudioDevicesInteractively(repositoryRoot);
+}
+
+static async Task SetRecordingsFolderAsync(ISettingsStore settingsStore)
+{
+    OrchestratorSettings current = await settingsStore.LoadAsync().ConfigureAwait(false);
+    string currentDisplay = string.IsNullOrWhiteSpace(current.RecordingsDirectory)
+        ? "(default: <repo>\\recordings)"
+        : current.RecordingsDirectory;
+    AnsiConsole.MarkupLine($"[grey]Current: {currentDisplay.EscapeMarkup()}[/]");
+
+    string input = AnsiConsole.Ask("New folder (leave blank to reset to the default):", string.Empty);
+    string? newValue = string.IsNullOrWhiteSpace(input) ? null : input.Trim();
+
+    await settingsStore.SaveAsync(current with { RecordingsDirectory = newValue }).ConfigureAwait(false);
+    AnsiConsole.MarkupLine(newValue is null
+        ? "[green]Reset to the default.[/]"
+        : $"[green]Saved:[/] {newValue.EscapeMarkup()}");
 }
 
 static async Task<AvailableUpdate?> CheckForUpdateWithTimeoutAsync(IUpdateChecker updateChecker)

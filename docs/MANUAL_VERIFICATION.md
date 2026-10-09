@@ -144,5 +144,39 @@ a human.
    - the full update flow end to end: install v1 for real (`vpk`'s own installer, not
      `dotnet run`), publish v2, confirm the app notices it, confirm "Update to vX" in
      Settings downloads and restarts into the new version cleanly.
-   First tag, first release, and this whole checklist are all blocked on the repo
-   existing on GitHub -- nothing here can be verified further until then.
+   This repo is on GitHub now (private, pushed 2026-10-09), but no tag has been pushed
+   yet -- this whole checklist is blocked on the first one.
+10. **The Esc-to-stop fix (`ConsoleEscapeWatcher`, 2026-10-09) could not be fully
+    verified by the agent that built it.** The bug it fixes was reported live: Esc did
+    nothing while dictating, with the orchestrator's own console window actually
+    focused -- ruling out the "wrong window has focus" explanation the original
+    `System.Console.KeyAvailable`-based implementation's own try/catch assumed. The new
+    implementation opens `CONIN$` directly and reads raw `INPUT_RECORD`s via
+    `ReadConsoleInput`/`PeekConsoleInput`, bypassing whatever `System.Console`'s own
+    redirect-detection heuristic was doing (a documented class of .NET bug under
+    Windows Terminal/ConPTY). What was verified: it builds, and a normal `dotnet run`
+    launch still reaches the same points it did before (no new crash). What was NOT
+    verified, because it needs a real keypress in a real terminal: that Esc is actually
+    now detected and stops the session. If it still doesn't work, the next thing to
+    check is `CreateFile("CONIN$", ...)`'s actual return value/`GetLastError` in that
+    specific terminal -- this fix assumes opening it succeeds wherever
+    `System.Console.KeyAvailable` was failing, which was reasoned from documented
+    ConPTY behavior, not confirmed against the exact terminal this was reported in.
+11. **Device resolution now runs `Set-AudioDevices.ps1` interactively instead of asking
+    for a device name as free text** (2026-10-09, also from live feedback), for
+    whichever device (`mic` for Dictate, `call` for Live/Call) isn't already in
+    `scripts/devices.local.json`. Verified for real: with no devices configured, `dotnet
+    run -- --mode dictate` correctly detects that, launches `Set-AudioDevices.ps1`
+    inheriting this process's own console, and the script's real device list (11 real
+    devices on the machine this was tested on) renders correctly in the same window.
+    Not verified: actually typing a selection into that inherited prompt and confirming
+    the chosen device flows back into the session that follows -- needs a human to type
+    a real number at the real prompt, see above for why this session's tools can't do
+    that themselves.
+12. **The Settings menu's "Set recordings/transcripts folder"** writes to
+    `%LOCALAPPDATA%\voice-local-cli\orchestrator-settings.json` and was verified via
+    `dotnet build`/`dotnet test` only (`JsonSettingsStore` is Infrastructure, excluded
+    from the coverage gate the same as every other real-OS adapter here, see
+    `tests/Cli.Tests/TESTING.md`) -- not run for real. Confirm it actually offers the
+    current value, accepts a new path, and that the next Dictate/Live/Call session
+    really writes its recordings there instead of the default `<repo>\recordings`.
