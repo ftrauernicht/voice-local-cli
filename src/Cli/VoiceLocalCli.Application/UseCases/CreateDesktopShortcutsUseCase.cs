@@ -13,10 +13,10 @@ public sealed class CreateDesktopShortcutsUseCase(IShortcutWriter shortcutWriter
 {
     private readonly IShortcutWriter _shortcutWriter = shortcutWriter;
 
-    public IReadOnlyList<DesktopShortcutDefinition> Run(string repositoryRoot, string desktopDirectory, string dotnetExecutablePath)
+    public IReadOnlyList<DesktopShortcutDefinition> Run(DesktopShortcutLaunchTarget launchTarget, string desktopDirectory, string iconsDirectory)
     {
         IReadOnlyList<DesktopShortcutDefinition> shortcuts =
-            DesktopShortcutPlan.BuildAll(repositoryRoot, desktopDirectory, dotnetExecutablePath);
+            DesktopShortcutPlan.BuildAll(launchTarget, desktopDirectory, iconsDirectory);
 
         foreach (DesktopShortcutDefinition shortcut in shortcuts)
         {

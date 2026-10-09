@@ -21,20 +21,28 @@ internal sealed record EnvironmentCheckItem(string Name, EnvironmentCheckStatus 
 /// </summary>
 internal static class EnvironmentCheck
 {
-    internal static IReadOnlyList<EnvironmentCheckItem> Collect(string repositoryRoot, string pythonExecutable, string? ffmpegExecutable)
+    /// <param name="scriptsRoot">From <see cref="RepositoryLayout.FindScriptsRoot"/>.</param>
+    /// <param name="pythonExecutable">From <see cref="RepositoryLayout.EnginePythonExecutable"/>.</param>
+    /// <param name="ffmpegExecutable">Resolved via PATH, or null if not found.</param>
+    /// <param name="venvStalenessNote">Non-null when a present venv was bootstrapped
+    /// against an older orchestrator version than the one currently running (installed
+    /// mode only -- dev-mode venvs are never stamped) -- appended to the Python engine
+    /// row's detail rather than treated as an error, since the venv still works.</param>
+    internal static IReadOnlyList<EnvironmentCheckItem> Collect(
+        string scriptsRoot, string pythonExecutable, string? ffmpegExecutable, string? venvStalenessNote = null)
     {
         return
         [
             File.Exists(pythonExecutable)
-                ? new EnvironmentCheckItem("Python engine", EnvironmentCheckStatus.Ok, pythonExecutable)
+                ? new EnvironmentCheckItem("Python engine", EnvironmentCheckStatus.Ok, venvStalenessNote ?? pythonExecutable)
                 : new EnvironmentCheckItem("Python engine", EnvironmentCheckStatus.Error, $"Not found at {pythonExecutable} -- run scripts\\Setup.ps1 first."),
             ffmpegExecutable is not null
                 ? new EnvironmentCheckItem("ffmpeg", EnvironmentCheckStatus.Ok, ffmpegExecutable)
                 : new EnvironmentCheckItem("ffmpeg", EnvironmentCheckStatus.Error, "Not found on PATH -- run scripts\\Setup.ps1 first."),
-            RepositoryLayout.ConfiguredDevice(repositoryRoot, "mic") is { } micDevice
+            RepositoryLayout.ConfiguredDevice(scriptsRoot, "mic") is { } micDevice
                 ? new EnvironmentCheckItem("Microphone device", EnvironmentCheckStatus.Ok, micDevice)
                 : new EnvironmentCheckItem("Microphone device", EnvironmentCheckStatus.OptionalMissing, "Configured on first use of Dictate."),
-            RepositoryLayout.ConfiguredDevice(repositoryRoot, "call") is { } callDevice
+            RepositoryLayout.ConfiguredDevice(scriptsRoot, "call") is { } callDevice
                 ? new EnvironmentCheckItem("Call-audio device", EnvironmentCheckStatus.Ok, callDevice)
                 : new EnvironmentCheckItem("Call-audio device", EnvironmentCheckStatus.OptionalMissing, "Configured on first use of Live/Call."),
             File.Exists(HfTokenFilePath)

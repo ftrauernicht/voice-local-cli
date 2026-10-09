@@ -2,9 +2,10 @@ name: Release
 
 # Builds and publishes a Velopack release whenever a vX.Y.Z tag is pushed -- see
 # docs/adr/0004-velopack-for-auto-updates.md for why Velopack over a bespoke updater,
-# winget, or MSIX. Not yet exercised against a real GitHub remote (this repo hasn't been
-# pushed yet) -- see docs/MANUAL_VERIFICATION.md for what that means has NOT been
-# confirmed here, as opposed to verified against the real vpk CLI's documented flags.
+# winget, or MSIX. Bundles the Python engine source and the PowerShell scripts alongside
+# the exe (not the built venv -- see RepositoryLayout.EngineVenvRoot's doc comment in the
+# .NET project for why that stays outside this package) so an installed copy can bootstrap
+# itself; see docs/MANUAL_VERIFICATION.md for what's confirmed from a real install.
 
 on:
   push:
@@ -40,6 +41,19 @@ jobs:
           --self-contained -p:PublishSingleFile=true
           -p:Version=${{ steps.version.outputs.version }}
           -o publish
+
+      - name: Bundle the Python engine source, scripts, and per-mode icons
+        # Source only, never the built venv -- that's multi-hundred-MB and has to be
+        # pip-installed on the target machine regardless (platform/CPU/GPU-specific
+        # wheels), exactly like scripts/Setup.ps1 already does for a source checkout. The
+        # installed orchestrator runs that same script against this bundled copy on first
+        # run -- see RepositoryLayout.FindEngineRoot/FindScriptsRoot's doc comments.
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path publish/engine, publish/scripts, publish/Assets/icons | Out-Null
+          Copy-Item src/engine/*.py, src/engine/pyproject.toml -Destination publish/engine
+          Copy-Item scripts/*.ps1 -Destination publish/scripts
+          Copy-Item src/Cli/VoiceLocalCli.Ui.Console/Assets/icons/*.ico -Destination publish/Assets/icons
 
       - name: Install the Velopack CLI (vpk)
         run: dotnet tool install -g vpk

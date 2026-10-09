@@ -15,11 +15,28 @@
     What is NOT automated, because it needs GUI interaction, a reboot, or a separate
     account, is listed at the end as a checklist.
 
+.PARAMETER EngineDir
+    Path to the engine source (the folder containing pyproject.toml). Defaults to this
+    checkout's own src/engine -- only overridden by the installed orchestrator, which
+    bootstraps against its own bundled copy of the engine instead of a git checkout.
+
+.PARAMETER VenvDir
+    Where to create the Python venv. Defaults to $EngineDir\.venv (this script's own
+    behavior for as long as it's existed). The installed orchestrator overrides this to a
+    stable, per-machine location outside its own update-managed install folder -- see
+    RepositoryLayout.EngineVenvRoot's doc comment in the .NET project for why.
+
 .EXAMPLE
     .\Setup.ps1
+
+.EXAMPLE
+    .\Setup.ps1 -EngineDir 'C:\path\to\bundled\engine' -VenvDir 'C:\path\to\persistent\venv'
 #>
 [CmdletBinding()]
-param()
+param(
+    [string] $EngineDir,
+    [string] $VenvDir
+)
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_Common.ps1"
@@ -61,19 +78,21 @@ if ($pyCmd) {
 }
 
 # --- 3. venv + Python packages ----------------------------------------------
-$engineDir = Join-Path $PSScriptRoot "..\src\engine" | Resolve-Path
-Write-Step "Python venv (installed from src/engine/pyproject.toml)"
-Set-Location $engineDir
-if (-not (Test-Path "$engineDir\.venv\Scripts\python.exe")) {
-    py -3.14 -m venv .venv
-    Write-Ok "venv created"
+$engineDir = if ($EngineDir) { (Resolve-Path $EngineDir).Path } else { (Resolve-Path (Join-Path $PSScriptRoot "..\src\engine")).Path }
+$venvDir = if ($VenvDir) { $VenvDir } else { Join-Path $engineDir ".venv" }
+
+Write-Step "Python venv (installed from $engineDir\pyproject.toml)"
+if (-not (Test-Path "$venvDir\Scripts\python.exe")) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $venvDir -Parent) | Out-Null
+    py -3.14 -m venv $venvDir
+    Write-Ok "venv created at $venvDir"
 } else {
-    Write-Ok "venv already exists"
+    Write-Ok "venv already exists at $venvDir"
 }
-& "$engineDir\.venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
-# Dependencies live in src/engine/pyproject.toml, not duplicated here -- see that file for
+& "$venvDir\Scripts\python.exe" -m pip install --upgrade pip --quiet
+# Dependencies live in $engineDir\pyproject.toml, not duplicated here -- see that file for
 # why each one is needed (forced alignment, VAD, etc.).
-& "$engineDir\.venv\Scripts\python.exe" -m pip install -e "$engineDir" --quiet
+& "$venvDir\Scripts\python.exe" -m pip install -e "$engineDir" --quiet
 if ($LASTEXITCODE -ne 0) {
     Write-Err "pip install failed (exit code $LASTEXITCODE) -- check the error above."
     exit 1
@@ -84,14 +103,12 @@ Write-Ok "packages installed/up to date"
 # Intel GPUs only, via OpenVINO. Deliberately not fatal if this fails -- faster-whisper
 # on CPU remains the baseline on every machine, GPU is a bonus, not a requirement.
 Write-Step "Optional GPU acceleration (OpenVINO, Intel GPUs only)"
-& "$engineDir\.venv\Scripts\python.exe" -m pip install -e "$engineDir[gpu]" --quiet 2>&1 | Out-Null
+& "$venvDir\Scripts\python.exe" -m pip install -e "$engineDir[gpu]" --quiet 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) {
     Write-Ok "OpenVINO packages installed -- used automatically if a matching Intel GPU is present"
 } else {
     Write-Warn "OpenVINO installation skipped/failed -- no problem, transcription just runs on CPU"
 }
-
-Set-Location $PSScriptRoot
 
 # --- Checklist: what only works by hand -------------------------------------
 Write-Step "Still to do by hand (details in README.md)"
