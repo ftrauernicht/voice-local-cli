@@ -8,8 +8,8 @@ keeps its own upstream license.
 
 This list needs re-verification against the live model cards before any public release:
 model licenses on Hugging Face (pyannote.audio's gated terms in particular) have shifted
-across versions before, and this list reflects the state understood while building this
-project, not a guarantee that upstream terms haven't changed since.
+across versions before, and this list is not a guarantee that upstream terms haven't
+changed since it was last checked.
 
 1. Whisper large-v3-turbo (CPU path)
 -------------------------------------
@@ -39,9 +39,8 @@ project, not a guarantee that upstream terms haven't changed since.
 - Used by: transcribe.py, for Call mode's speaker diarization
 - Source: https://huggingface.co/pyannote/speaker-diarization-3.1 (gated -- requires
   accepting the model's terms on Hugging Face and a personal access token)
-- License: as stated on the model card at the time of use -- NEEDS RE-VERIFICATION
-  against the live model card before publishing; pyannote's gated terms have changed
-  across releases before.
+- License: not stated here -- check the live model card before publishing; pyannote's
+  gated terms have changed across releases before.
 
 Reporting a problem
 --------------------

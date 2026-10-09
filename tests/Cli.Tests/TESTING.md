@@ -18,8 +18,7 @@ on this collector.
 Both test projects use xUnit v3 on Microsoft.Testing.Platform (MTP), not classic VSTest.
 `coverlet.msbuild`'s `/p:CollectCoverage=true` hooks into VSTest's data-collector pipeline
 -- against an MTP-based project it silently breaks test discovery (`dotnet test` reports
-"Zero tests ran", exit code 5, with no message pointing at the real cause). Found by running
-the exact `ci.yml` command locally during WP5, not assumed from documentation.
+"Zero tests ran", exit code 5, with no message pointing at the real cause).
 `Microsoft.Testing.Extensions.CodeCoverage` is Microsoft's own MTP-native collector, invoked
 through `dotnet test`'s built-in `--coverage` flag.
 
@@ -28,10 +27,9 @@ through `dotnet test`'s built-in `--coverage` flag.
 Running `dotnet test VoiceLocalCli.slnx` executes both test projects in one invocation.
 Giving each project its own output filename (or no `--coverage-output` at all) produces two
 separate per-project `.cobertura.xml` files under `TestResults/`, since each test host writes
-its own report independently -- the natural-seeming fix is to merge them afterward. Passing
-one shared `--coverage-output` filename instead makes the collector merge both runs' line
-hits into a single report directly, without a separate merge step. Verified directly against
-this repo's two test projects, not taken on faith from the collector's own docs.
+its own report independently. Passing one shared `--coverage-output` filename instead makes
+the collector merge both runs' line hits into a single report directly, without a separate
+merge step.
 
 ## `coverage.config`'s module exclusions, and the XML gotcha hiding in it
 
@@ -45,8 +43,7 @@ see `docs/MANUAL_VERIFICATION.md` for what a human still has to check there by h
 A literal double hyphen (`--`) inside an XML comment anywhere in that settings file is
 invalid XML per the XML spec, and the coverage collector fails to parse the whole file
 without printing an error that names the file or the reason -- it just reports zero tests
-ran. Found the hard way while writing the file's own explanatory comment (this project's
-prose convention leans on `--` as a dash). Keep that file's comments hyphen-free.
+ran. Keep that file's comments hyphen-free.
 
 ## What's in scope for the 85% gate
 

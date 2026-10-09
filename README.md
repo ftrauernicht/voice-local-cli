@@ -31,18 +31,6 @@ below, but it is explicitly not the feature this project is built around.
 > calls. Dictate mode never has this problem: it only ever records your own microphone,
 > into your own focused window.
 
-## Project status
-
-The Python speech engine (`src/engine/`) is complete and has been used daily for voice
-dictation, with a real pytest suite and an 85% coverage gate. The .NET 10 +
-Spectre.Console orchestrator (`src/Cli/`) that replaces the previous two-PowerShell-
-windows-per-mode flow covers **all three modes** -- Dictate, Live, and Call -- each with
-its own session type, confirmed end to end with a real microphone (real ffmpeg capture,
-a correctly finalized recording, a clean stop, and for Call mode a real transcription
-pass). What's still outstanding is specifically the live view's visual correctness and
-real typing into a focused window, which need a human at a real keyboard to judge -- see
-`docs/MANUAL_VERIFICATION.md`.
-
 ## At a glance
 
 | | |
@@ -53,7 +41,7 @@ real typing into a focused window, which need a human at a real keyboard to judg
 | **CI/CD** | GitHub Actions: lint + test + coverage (Python, .NET, PowerShell), format, security scanning, Renovate |
 | **License** | MIT for this repo's code; third-party speech models keep their own licenses -- see [NOTICE](NOTICE) |
 
-## How it works today
+## How it works
 
 Three Python entry points under `src/engine/`, each reading audio from a WAV file that
 `ffmpeg` is recording:
@@ -72,12 +60,10 @@ word recurs often enough).
 
 The .NET orchestrator (`src/Cli/`) drives the Python engine as a child process and parses
 its structured `@@STATE:` status events (see `src/engine/CONTRACT.md`) to show a live
-Spectre.Console view instead of raw scrolling PowerShell output. It also fixes a real bug
-in the old flow: closing a console window via the X button, or killing it outright, used
-to leave `ffmpeg` recording in the background unnoticed (confirmed live, once, for 35+
-minutes) -- the orchestrator catches both cases (`ConsoleCtrlHandler` for a graceful
-close, a Win32 Job Object as a kernel-level backstop for a hard kill) and stops `ffmpeg`
-cleanly either way.
+Spectre.Console view. Closing the console window, or killing it outright, always stops
+`ffmpeg` cleanly too: `ConsoleCtrlHandler` catches a graceful window close, and a Win32 Job
+Object is the backstop for a hard kill -- `ffmpeg` never keeps running unnoticed in the
+background after the orchestrator itself is gone.
 
 ## Setup
 
@@ -131,8 +117,8 @@ each keeps its upstream license, tracked in [NOTICE](NOTICE). Summary:
 This project deliberately avoids models whose license would restrict non-commercial use
 or redistribution: the forced-alignment step specifically uses the models above instead
 of torchaudio's built-in `MMS_FA` bundle or the `ctc-forced-aligner` package's default,
-both of which rely on a Meta MMS checkpoint under CC-BY-NC 4.0 -- not usable for client
-work, which real engagements built on this engine would be.
+both of which rely on a Meta MMS checkpoint under CC-BY-NC 4.0, a license too restrictive
+for this project's own MIT/commercial-friendly stance.
 
 ## Updates
 
@@ -143,7 +129,7 @@ menu. Running from a source checkout (`dotnet run`, the normal case while develo
 skips the check entirely, since there's no installed copy to update. No release has been
 published yet, so there is currently nothing to update to.
 
-See `docs/adr/` for the architecture decisions recorded so far, and
+See `docs/adr/` for the architecture decisions behind this project, and
 `docs/MANUAL_VERIFICATION.md` for what's confirmed only by hand, not by CI.
 
 ## License

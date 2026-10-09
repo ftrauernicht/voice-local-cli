@@ -1,9 +1,10 @@
 # Engine CLI contract
 
 This documents the interface between `src/engine/`'s Python scripts and anything that
-launches them as a subprocess -- today, manual invocation; planned, the .NET orchestrator
-(see the repo README's "Roadmap"). Treat a change here as a breaking change for that
-consumer, even though nothing in this repo currently enforces it automatically.
+launches them as a subprocess -- primarily the .NET orchestrator under `src/Cli/`, which
+parses this contract's status events to drive its Spectre.Console view (see
+`EngineLineClassifier`). Treat a change here as a breaking change for that consumer, even
+though nothing in this repo currently enforces it automatically.
 
 ## Entry points
 
@@ -33,7 +34,7 @@ prevent.
     as "this line is a status event, everything else on stdout is transcript content,"
     without parsing prose. See `_console.state()` for the emitting side.
 
-## Status-event vocabulary (as of this writing)
+## Status-event vocabulary
 
 | `name` | Emitted by | Extra fields | Meaning |
 |---|---|---|---|

@@ -21,9 +21,7 @@ across all three entry points, with `faster_whisper.WhisperModel`, OpenVINO's
 
 Several `*MainLoopIntegration` test classes drive the real `main()` functions end to end
 against small, real WAV files written on a background timer (simulating ffmpeg), with only
-the transcription backend and (for `dictate.py`) `pyautogui.write`/window-focus mocked --
-these are the formalized version of the manual scripted runs used to validate the VAD
-rewrite during development.
+the transcription backend and (for `dictate.py`) `pyautogui.write`/window-focus mocked.
 
 **Every test that touches `dictate.py` autouse-patches `pyautogui.write`** (see
 `test_dictate.py`'s `no_real_typing` fixture) -- this suite must never actually type into
