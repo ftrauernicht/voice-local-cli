@@ -45,12 +45,11 @@ jobs:
         run: dotnet tool install -g vpk
 
       - name: Pack the Velopack release
-        # --icon omitted: no .ico version of docs/branding/icon.svg exists yet (the brand
-        # direction itself hasn't been confirmed) -- add it here once one does.
         run: >
           vpk pack --packId VoiceLocalCli --packVersion ${{ steps.version.outputs.version }}
           --packDir publish --mainExe VoiceLocalCli.exe --packTitle voice-local-cli
           --packAuthors "Frank Trauernicht" --outputDir releases
+          --icon src/Cli/VoiceLocalCli.Ui.Console/Assets/icons/app.ico
 
       - name: Upload to GitHub Releases
         run: >

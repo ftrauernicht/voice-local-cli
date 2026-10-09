@@ -9,6 +9,7 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>VoiceLocalCli</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <ApplicationIcon>Assets\icons\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
