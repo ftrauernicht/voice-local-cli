@@ -131,21 +131,26 @@ a human.
    - double-click each shortcut and confirm it launches the orchestrator straight into
      its own mode (no menu prompt), from this repository as its working directory --
      all three are real sessions now (see item 7), not a "coming soon" placeholder.
-9. **The Velopack release pipeline (`.github/workflows/release.yml`) has never run.**
-   `vpk pack`/`vpk upload github`'s flags were confirmed against the real, installed
-   `vpk` CLI's own `--help` output (not guessed or taken from docs that might be stale),
-   and `VelopackApp.Build().Run()`/the startup update check were confirmed not to break
-   a normal `dotnet run` launch (`IsInstalled` correctly reports false, the check is
-   skipped, no exception, no delay). What's still unconfirmed because no tag has ever
-   been pushed and this repo isn't on GitHub yet:
-   - that `release.yml` actually succeeds on a real `windows-latest` runner,
-   - that the resulting GitHub Release's assets are actually consumable by
-     `GithubSource`/`UpdateManager.CheckForUpdatesAsync()` from a real installed copy,
-   - the full update flow end to end: install v1 for real (`vpk`'s own installer, not
-     `dotnet run`), publish v2, confirm the app notices it, confirm "Update to vX" in
-     Settings downloads and restarts into the new version cleanly.
-   This repo is on GitHub now (private, pushed 2026-10-09), but no tag has been pushed
-   yet -- this whole checklist is blocked on the first one.
+9. **The Velopack release pipeline is now confirmed against two real releases.**
+   `v0.1.0` (2026-10-09) was the first `release.yml` run on a real `windows-latest`
+   runner -- succeeded, but the installed `Setup.exe` crashed immediately (see item 17,
+   ADR-0005). `v0.1.1` (2026-10-09, same day, after the fix and after the repo went
+   public) confirmed the rest of this checklist for real:
+   - `release.yml` succeeds on a real `windows-latest` runner, including the new
+     engine/scripts/icons bundling step -- verified by downloading the published
+     `.nupkg` and listing its contents, not just trusting a green checkmark.
+   - The resulting GitHub Release's assets ARE consumable by
+     `GithubSource`/`UpdateManager.CheckForUpdatesAsync()` from a real installed copy:
+     the `v0.1.0` install already on this machine, pointed at the now-public repo,
+     printed `Update available: v0.1.1 -- see Settings to update.` on a real launch --
+     this needed the repo to be public first (unauthenticated `GithubSource` can't read
+     a private repo's release assets, a constraint found and fixed by making the repo
+     public on 2026-10-09, same day).
+
+   Still not verified: actually choosing "Update to v0.1.1" in the Settings menu and
+   confirming it downloads, applies, and restarts into the new version cleanly -- needs
+   a human at a real keyboard to drive the `SelectionPrompt`, same class of limitation as
+   every other interactive menu in this app.
 10. **The Esc-to-stop fix (`ConsoleEscapeWatcher`, 2026-10-09) -- CONFIRMED WORKING**,
     live, by Frank, in the terminal it was originally broken in (screenshot evidence:
     "Dictation finished." printed and the process returned to the shell after pressing
