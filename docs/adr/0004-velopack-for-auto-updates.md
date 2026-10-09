@@ -51,16 +51,10 @@ choices:
 
 ## Consequences
 
-- No release has ever been published (no tag exists, and this repo isn't pushed to
-  GitHub yet) -- `release.yml` is written against the real, verified `vpk` CLI's
-  documented flags, but has not itself been run for real. See
-  `docs/MANUAL_VERIFICATION.md` for what that specifically means is still unconfirmed.
-- This only updates the .NET orchestrator (`src/Cli/`), not the Python engine
-  (`src/engine/`). As long as distribution stays "clone/pull the repo, run
-  `scripts/Setup.ps1`," a `git pull` already picks up engine changes independent of
-  Velopack. This becomes a real gap only if a packaged exe is ever distributed without
-  an accompanying git checkout -- deliberately out of scope for this first pass, not
-  solved by it.
+- `release.yml` bundles the Python engine source and the PowerShell scripts into the same
+  package Velopack installs and updates -- see ADR-0005 for why, and what that does and
+  doesn't mean for the Python venv itself.
 - `scripts/Setup.ps1` stays exactly what it is (fresh-machine bootstrap: ffmpeg, the
   Python venv, optional GPU extras) -- it is a different problem from "keep an existing
-  install current," and this decision does not fold one into the other.
+  install current," and this decision does not fold one into the other. ADR-0005 reuses
+  it rather than duplicating its logic.

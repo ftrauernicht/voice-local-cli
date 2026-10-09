@@ -15,6 +15,14 @@ public interface IUpdateChecker
     /// than every caller having to check both.</summary>
     bool IsInstalled { get; }
 
+    /// <summary>The version of this running installed copy, or null when
+    /// <see cref="IsInstalled"/> is false -- the authoritative source for "what version is
+    /// this," read from Velopack's own install manifest rather than assembly metadata
+    /// (which a self-contained single-file publish doesn't reliably carry the same way).
+    /// Used to stamp/compare the installed-mode engine venv's bootstrap version -- see
+    /// RepositoryLayout.StampVenvVersion.</summary>
+    string? CurrentVersion { get; }
+
     /// <summary>Returns the newer release found, or null if already up to date, not
     /// installed, or the check itself failed (no network, no release published yet, GitHub
     /// unreachable) -- a failed check is never an error the caller has to handle, since the

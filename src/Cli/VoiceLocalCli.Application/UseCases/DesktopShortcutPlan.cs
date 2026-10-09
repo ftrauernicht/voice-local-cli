@@ -4,42 +4,42 @@ namespace VoiceLocalCli.Application.UseCases;
 
 /// <summary>
 /// Builds the three <see cref="DesktopShortcutDefinition"/>s (one per
-/// <see cref="OrchestratorMode"/>), each launching `dotnet run --project ... -- --mode
-/// &lt;x&gt;` from the repository root. Pure function: no file is written here, so this is
-/// fully unit-testable. Targets `dotnet run` rather than a published executable because no
-/// release pipeline exists yet (see the auto-update research referenced from the README's
-/// roadmap) -- these shortcuts only work from a source checkout, the same constraint the
-/// Ui.Console project's RepositoryLayout already documents for everything else in this
-/// project today.
+/// <see cref="OrchestratorMode"/>) for a given <see cref="DesktopShortcutLaunchTarget"/>.
+/// Pure function: no file is written here, so this is fully unit-testable, and it has no
+/// idea whether the target is a dev checkout or an installed copy -- that decision is the
+/// caller's (see Program.cs's `CreateShortcuts`).
 /// </summary>
 public static class DesktopShortcutPlan
 {
     public static IReadOnlyList<DesktopShortcutDefinition> BuildAll(
-        string repositoryRoot, string desktopDirectory, string dotnetExecutablePath)
+        DesktopShortcutLaunchTarget launchTarget, string desktopDirectory, string iconsDirectory)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
+        ArgumentNullException.ThrowIfNull(launchTarget);
+        ArgumentException.ThrowIfNullOrWhiteSpace(launchTarget.TargetPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(launchTarget.WorkingDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(desktopDirectory);
-        ArgumentException.ThrowIfNullOrWhiteSpace(dotnetExecutablePath);
-
-        string projectPath = Path.Combine(repositoryRoot, "src", "Cli", "VoiceLocalCli.Ui.Console");
-        string iconsDirectory = Path.Combine(projectPath, "Assets", "icons");
+        ArgumentException.ThrowIfNullOrWhiteSpace(iconsDirectory);
 
         return
         [
             Build(OrchestratorMode.Dictate, "Hands-free local dictation into whatever window has focus."),
-            Build(OrchestratorMode.Live, "Live call transcript (coming soon -- see the README's Roadmap)."),
-            Build(OrchestratorMode.Call, "Full call recording with speaker diarization (coming soon -- see the README's Roadmap)."),
+            Build(OrchestratorMode.Live, "Live call transcript while the call is in progress."),
+            Build(OrchestratorMode.Call, "Full call recording with speaker diarization after the call ends."),
         ];
 
         DesktopShortcutDefinition Build(OrchestratorMode mode, string description)
         {
             string modeArgument = mode.ToString().ToLowerInvariant();
+            string arguments = string.IsNullOrEmpty(launchTarget.ArgumentsPrefix)
+                ? $"--mode {modeArgument}"
+                : $"{launchTarget.ArgumentsPrefix} --mode {modeArgument}";
+
             return new DesktopShortcutDefinition(
                 Mode: mode,
                 ShortcutPath: Path.Combine(desktopDirectory, $"voice-local-cli - {mode}.lnk"),
-                TargetPath: dotnetExecutablePath,
-                Arguments: $"run --project \"{projectPath}\" -- --mode {modeArgument}",
-                WorkingDirectory: repositoryRoot,
+                TargetPath: launchTarget.TargetPath,
+                Arguments: arguments,
+                WorkingDirectory: launchTarget.WorkingDirectory,
                 IconPath: Path.Combine(iconsDirectory, $"{modeArgument}.ico"),
                 Description: description);
         }

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Spectre.Console;
 
 using Velopack;
+using Velopack.Locators;
 
 using VoiceLocalCli.Application.Ports;
 using VoiceLocalCli.Application.UseCases;
@@ -20,6 +21,7 @@ AnsiConsole.Write(new FigletText("voice-local-cli").Color(new Color(0x58, 0xA6, 
 AnsiConsole.MarkupLine("[grey]Local, offline voice dictation -- speak, and the text types into whatever window has focus.[/]\n");
 
 var updateChecker = new VelopackUpdateChecker();
+bool isInstalled = updateChecker.IsInstalled;
 AvailableUpdate? availableUpdate = await CheckForUpdateWithTimeoutAsync(updateChecker).ConfigureAwait(false);
 if (availableUpdate is not null)
 {
@@ -28,10 +30,14 @@ if (availableUpdate is not null)
 
 ISettingsStore settingsStore = new JsonSettingsStore();
 
-string repositoryRoot;
+// Both fall back to a bundled copy next to this exe when there's no checkout above it --
+// see RepositoryLayout's own doc comment for the two shapes this app can run in.
+string engineRoot;
+string scriptsRoot;
 try
 {
-    repositoryRoot = RepositoryLayout.FindRepositoryRoot();
+    engineRoot = RepositoryLayout.FindEngineRoot();
+    scriptsRoot = RepositoryLayout.FindScriptsRoot();
 }
 catch (InvalidOperationException ex)
 {
@@ -39,17 +45,42 @@ catch (InvalidOperationException ex)
     return 1;
 }
 
-string pythonExecutable = RepositoryLayout.EnginePythonExecutable(repositoryRoot);
+string venvRoot = RepositoryLayout.EngineVenvRoot(engineRoot, isInstalled);
+string pythonExecutable = RepositoryLayout.EnginePythonExecutable(venvRoot);
 string? ffmpegExecutable = ResolveFfmpegPath();
+string recordingsBaseDirectory = RepositoryLayout.RecordingsBaseDirectory(isInstalled);
+string? currentVersion = updateChecker.CurrentVersion;
 
-IReadOnlyList<EnvironmentCheckItem> environmentChecks = EnvironmentCheck.Collect(repositoryRoot, pythonExecutable, ffmpegExecutable);
+IReadOnlyList<EnvironmentCheckItem> environmentChecks = EnvironmentCheck.Collect(
+    scriptsRoot, pythonExecutable, ffmpegExecutable, DescribeVenvStaleness(venvRoot, pythonExecutable));
 EnvironmentCheck.Print(environmentChecks);
 
-if (environmentChecks.Any(item => item.Status == EnvironmentCheckStatus.Error) || ffmpegExecutable is null)
+if (HasBlockingErrors(environmentChecks, ffmpegExecutable))
 {
-    // The second condition can never trigger on its own -- a null ffmpegExecutable always
-    // produces an Error item above -- it exists only to narrow the type for the compiler's
-    // nullable analysis below, which can't follow that invariant through the lambda.
+    // A dev checkout without a built venv/ffmpeg is a deliberate state (the developer just
+    // hasn't run Setup.ps1 yet) -- only an installed copy, which has no other way to reach
+    // Setup.ps1 on its own, gets offered an automatic bootstrap.
+    if (!isInstalled || !OfferEngineBootstrap(engineRoot, scriptsRoot, venvRoot, currentVersion))
+    {
+        return 1;
+    }
+
+    ffmpegExecutable = ResolveFfmpegPath();
+    environmentChecks = EnvironmentCheck.Collect(
+        scriptsRoot, pythonExecutable, ffmpegExecutable, DescribeVenvStaleness(venvRoot, pythonExecutable));
+    EnvironmentCheck.Print(environmentChecks);
+
+    if (HasBlockingErrors(environmentChecks, ffmpegExecutable))
+    {
+        return 1;
+    }
+}
+
+if (ffmpegExecutable is null)
+{
+    // Can never trigger on its own -- HasBlockingErrors above already guarantees this --
+    // it exists only to narrow the type for the compiler's nullable analysis below, which
+    // can't follow that invariant through the helper function.
     return 1;
 }
 
@@ -58,7 +89,7 @@ if (modeArgument is not null)
 {
     // --mode bypass (desktop shortcuts): run once and exit -- no menu involved, so there's
     // nothing to loop back to.
-    return await RunSelectedModeAsync(modeArgument.Value, repositoryRoot, pythonExecutable, ffmpegExecutable, settingsStore).ConfigureAwait(false);
+    return await RunSelectedModeAsync(modeArgument.Value, engineRoot, scriptsRoot, pythonExecutable, ffmpegExecutable, recordingsBaseDirectory, settingsStore).ConfigureAwait(false);
 }
 
 const string settingsChoice = "Settings";
@@ -79,7 +110,7 @@ while (true)
 
     if (selection == settingsChoice)
     {
-        await RunSettingsMenuAsync(updateChecker, availableUpdate, settingsStore).ConfigureAwait(false);
+        await RunSettingsMenuAsync(updateChecker, availableUpdate, settingsStore, isInstalled, engineRoot, scriptsRoot, venvRoot).ConfigureAwait(false);
         continue;
     }
 
@@ -90,37 +121,40 @@ while (true)
         continue;
     }
 
-    await RunSelectedModeAsync(selectedMode, repositoryRoot, pythonExecutable, ffmpegExecutable, settingsStore).ConfigureAwait(false);
+    await RunSelectedModeAsync(selectedMode, engineRoot, scriptsRoot, pythonExecutable, ffmpegExecutable, recordingsBaseDirectory, settingsStore).ConfigureAwait(false);
 }
+
+static bool HasBlockingErrors(IReadOnlyList<EnvironmentCheckItem> items, string? ffmpegExecutable) =>
+    items.Any(item => item.Status == EnvironmentCheckStatus.Error) || ffmpegExecutable is null;
 
 // Dictate uses the plain "mic" device, Live/Call the mixed "call" bus -- see
 // Set-AudioDevices.ps1's own doc comment for the distinction. Resolved here, not inside
 // each RunXAsync, since all three need it the same way: use what's already configured,
 // or configure it now via the real script (see ResolveDevice's own doc comment).
-static async Task<int> RunSelectedModeAsync(OrchestratorMode mode, string repositoryRoot, string pythonExecutable, string ffmpegExecutable, ISettingsStore settingsStore)
+static async Task<int> RunSelectedModeAsync(OrchestratorMode mode, string engineRoot, string scriptsRoot, string pythonExecutable, string ffmpegExecutable, string recordingsBaseDirectory, ISettingsStore settingsStore)
 {
     string devicePurpose = mode == OrchestratorMode.Dictate ? "mic" : "call";
-    string device = ResolveDevice(repositoryRoot, devicePurpose);
+    string device = ResolveDevice(scriptsRoot, devicePurpose);
     OrchestratorSettings orchestratorSettings = await settingsStore.LoadAsync().ConfigureAwait(false);
 
     return mode switch
     {
-        OrchestratorMode.Dictate => await RunDictateAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
-        OrchestratorMode.Live => await RunLiveAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
-        OrchestratorMode.Call => await RunCallAsync(repositoryRoot, pythonExecutable, ffmpegExecutable, device, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
+        OrchestratorMode.Dictate => await RunDictateAsync(engineRoot, pythonExecutable, ffmpegExecutable, device, recordingsBaseDirectory, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
+        OrchestratorMode.Live => await RunLiveAsync(engineRoot, pythonExecutable, ffmpegExecutable, device, recordingsBaseDirectory, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
+        OrchestratorMode.Call => await RunCallAsync(engineRoot, scriptsRoot, pythonExecutable, ffmpegExecutable, device, recordingsBaseDirectory, orchestratorSettings.RecordingsDirectory).ConfigureAwait(false),
         _ => 1,
     };
 }
 
-static async Task<int> RunDictateAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
+static async Task<int> RunDictateAsync(string engineRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string recordingsBaseDirectory, string? recordingsDirectoryOverride)
 {
     var settings = new DictationSettings(Microphone: microphone);
     var session = new DictationSession(
         new RealProcessLauncher(),
         ffmpegExecutable,
         pythonExecutable,
-        RepositoryLayout.EngineScript(repositoryRoot, "dictate.py"),
-        RepositoryLayout.RecordingsDirectory(repositoryRoot, recordingsDirectoryOverride));
+        RepositoryLayout.EngineScript(engineRoot, "dictate.py"),
+        RepositoryLayout.RecordingsDirectory(recordingsBaseDirectory, recordingsDirectoryOverride));
 
     var view = new DictationView();
     session.PhaseChanged += view.OnPhaseChanged;
@@ -155,7 +189,7 @@ static async Task<int> RunDictateAsync(string repositoryRoot, string pythonExecu
     return 0;
 }
 
-static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
+static async Task<int> RunLiveAsync(string engineRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string recordingsBaseDirectory, string? recordingsDirectoryOverride)
 {
     PrintCallConsentWarning();
 
@@ -164,8 +198,8 @@ static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutab
         new RealProcessLauncher(),
         ffmpegExecutable,
         pythonExecutable,
-        RepositoryLayout.EngineScript(repositoryRoot, "transcribe_live.py"),
-        RepositoryLayout.RecordingsDirectory(repositoryRoot, recordingsDirectoryOverride));
+        RepositoryLayout.EngineScript(engineRoot, "transcribe_live.py"),
+        RepositoryLayout.RecordingsDirectory(recordingsBaseDirectory, recordingsDirectoryOverride));
 
     var view = new LiveTranscriptView();
     session.PhaseChanged += view.OnPhaseChanged;
@@ -200,7 +234,7 @@ static async Task<int> RunLiveAsync(string repositoryRoot, string pythonExecutab
     return 0;
 }
 
-static async Task<int> RunCallAsync(string repositoryRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string? recordingsDirectoryOverride)
+static async Task<int> RunCallAsync(string engineRoot, string scriptsRoot, string pythonExecutable, string ffmpegExecutable, string microphone, string recordingsBaseDirectory, string? recordingsDirectoryOverride)
 {
     PrintCallConsentWarning();
 
@@ -209,8 +243,8 @@ static async Task<int> RunCallAsync(string repositoryRoot, string pythonExecutab
         new RealProcessLauncher(),
         ffmpegExecutable,
         pythonExecutable,
-        RepositoryLayout.EngineScript(repositoryRoot, "transcribe.py"),
-        RepositoryLayout.RecordingsDirectory(repositoryRoot, recordingsDirectoryOverride));
+        RepositoryLayout.EngineScript(engineRoot, "transcribe.py"),
+        RepositoryLayout.RecordingsDirectory(recordingsBaseDirectory, recordingsDirectoryOverride));
 
     session.UnrecognizedEngineOutput += line =>
         AnsiConsole.MarkupLine($"[yellow]Unrecognized engine output, ignored by the UI:[/] {line.EscapeMarkup()}");
@@ -258,7 +292,7 @@ static async Task<int> RunCallAsync(string repositoryRoot, string pythonExecutab
         return 0;
     }
 
-    string? hfToken = await ResolveHfTokenAsync(repositoryRoot).ConfigureAwait(false);
+    string? hfToken = await ResolveHfTokenAsync(scriptsRoot).ConfigureAwait(false);
     if (hfToken is null)
     {
         AnsiConsole.MarkupLine("[grey]No Hugging Face token found -- transcribing without speaker diarization. See README.md.[/]");
@@ -332,9 +366,9 @@ static Layout BuildRecordingLayout(DateTimeOffset startedAt)
 static Task WatchForEscapeAsync(Func<bool> stopRequested, Func<bool> sessionEnded, Action<bool> requestStop) =>
     Task.Run(() => ConsoleEscapeWatcher.Watch(stopRequested, sessionEnded, () => requestStop(true)));
 
-static async Task<string?> ResolveHfTokenAsync(string repositoryRoot)
+static async Task<string?> ResolveHfTokenAsync(string scriptsRoot)
 {
-    string scriptPath = Path.Combine(repositoryRoot, "scripts", "Get-HfToken.ps1");
+    string scriptPath = Path.Combine(scriptsRoot, "Get-HfToken.ps1");
     if (!File.Exists(scriptPath))
     {
         return null;
@@ -370,9 +404,9 @@ static async Task<string?> ResolveHfTokenAsync(string repositoryRoot)
 // if nothing is configured yet. Falls back to a plain text prompt only if the script
 // itself didn't end up producing a value (e.g. it couldn't find ffmpeg, or the user
 // closed it without finishing).
-static string ResolveDevice(string repositoryRoot, string purpose)
+static string ResolveDevice(string scriptsRoot, string purpose)
 {
-    string? configured = RepositoryLayout.ConfiguredDevice(repositoryRoot, purpose);
+    string? configured = RepositoryLayout.ConfiguredDevice(scriptsRoot, purpose);
     if (configured is not null)
     {
         return configured;
@@ -380,9 +414,9 @@ static string ResolveDevice(string repositoryRoot, string purpose)
 
     string label = purpose == "mic" ? "microphone" : "call-audio";
     AnsiConsole.MarkupLine($"[grey]No {label} device configured yet -- running Set-AudioDevices.ps1...[/]\n");
-    RunSetAudioDevicesInteractively(repositoryRoot);
+    RunSetAudioDevicesInteractively(scriptsRoot);
 
-    configured = RepositoryLayout.ConfiguredDevice(repositoryRoot, purpose);
+    configured = RepositoryLayout.ConfiguredDevice(scriptsRoot, purpose);
     return configured ?? AnsiConsole.Ask<string>($"{label} device name (the exact ffmpeg/dshow name):");
 }
 
@@ -390,18 +424,19 @@ static string ResolveDevice(string repositoryRoot, string purpose)
 // process's own console directly -- its Read-Host prompts work exactly as if it had been
 // run by hand in this same window, instead of needing a separate PowerShell window the
 // way the README used to describe.
-static void RunSetAudioDevicesInteractively(string repositoryRoot) =>
-    RunPowerShellScriptInteractively(Path.Combine(repositoryRoot, "scripts", "Set-AudioDevices.ps1"));
+static void RunSetAudioDevicesInteractively(string scriptsRoot) =>
+    RunPowerShellScriptInteractively(Path.Combine(scriptsRoot, "Set-AudioDevices.ps1"));
 
-// Shared with RunSetAudioDevicesInteractively: no stdio redirection, so a script's
-// Read-Host (including -AsSecureString, hidden-input prompts like Save-HfToken.ps1's)
-// behaves exactly as if it had been run by hand in this same window.
-static void RunPowerShellScriptInteractively(string scriptPath)
+// Shared with RunSetAudioDevicesInteractively/the engine bootstrap below: no stdio
+// redirection, so a script's Read-Host (including -AsSecureString, hidden-input prompts
+// like Save-HfToken.ps1's) behaves exactly as if it had been run by hand in this same
+// window. Returns the script's own exit code (1 if the script itself couldn't be found).
+static int RunPowerShellScriptInteractively(string scriptPath, IEnumerable<string>? arguments = null)
 {
     if (!File.Exists(scriptPath))
     {
         AnsiConsole.MarkupLine($"[red]Could not find {scriptPath.EscapeMarkup()}.[/]");
-        return;
+        return 1;
     }
 
     var startInfo = new ProcessStartInfo
@@ -413,9 +448,14 @@ static void RunPowerShellScriptInteractively(string scriptPath)
     startInfo.ArgumentList.Add("-NoProfile");
     startInfo.ArgumentList.Add("-File");
     startInfo.ArgumentList.Add(scriptPath);
+    foreach (string argument in arguments ?? [])
+    {
+        startInfo.ArgumentList.Add(argument);
+    }
 
     using Process? process = Process.Start(startInfo);
     process?.WaitForExit();
+    return process?.ExitCode ?? 1;
 }
 
 static string? ResolveFfmpegPath() => ResolveOnPath("ffmpeg.exe");
@@ -454,16 +494,76 @@ static OrchestratorMode? ParseModeArgument(string[] commandLineArgs)
     return null;
 }
 
-static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUpdate? availableUpdate, ISettingsStore settingsStore)
+// Non-null only for an installed copy with a present-but-stamped venv whose stamp doesn't
+// match the version currently running -- see RepositoryLayout.StampedVenvVersion. Returns
+// null (nothing to say) for a missing venv entirely -- that's EnvironmentCheck's Error
+// case, not this informational one -- and for dev mode, where venvs are never stamped.
+static string? DescribeVenvStaleness(string venvRoot, string pythonExecutable)
+{
+    if (!File.Exists(pythonExecutable))
+    {
+        return null;
+    }
+
+    string? stampedVersion = RepositoryLayout.StampedVenvVersion(venvRoot);
+    return stampedVersion is null
+        ? null
+        : $"{pythonExecutable} (bootstrapped for v{stampedVersion})";
+}
+
+// Offers to run the bundled Setup.ps1 for an installed copy whose engine venv is missing
+// or whose ffmpeg isn't on PATH -- the one thing an installed app has no other way to
+// reach, since there's no checkout to run Setup.ps1 from by hand. Never silent: asks
+// first, then runs with full visible output (winget prompts, pip's own progress).
+static bool OfferEngineBootstrap(string engineRoot, string scriptsRoot, string venvRoot, string? currentVersion)
+{
+    AnsiConsole.MarkupLine("[#D29922]This installed copy needs a one-time setup step (installs ffmpeg and the Python speech engine) before it can run any mode.[/]");
+    if (!AnsiConsole.Confirm("Run setup now?"))
+    {
+        AnsiConsole.MarkupLine($"[grey]Skipped -- re-launch and confirm when you're ready.[/]");
+        return false;
+    }
+
+    return RunEngineBootstrap(engineRoot, scriptsRoot, venvRoot, currentVersion);
+}
+
+static bool RunEngineBootstrap(string engineRoot, string scriptsRoot, string venvRoot, string? currentVersion)
+{
+    string setupScript = Path.Combine(scriptsRoot, "Setup.ps1");
+    int exitCode = RunPowerShellScriptInteractively(setupScript, ["-EngineDir", engineRoot, "-VenvDir", venvRoot]);
+    if (exitCode != 0)
+    {
+        AnsiConsole.MarkupLine("[red]Setup did not finish successfully -- see the output above.[/]");
+        return false;
+    }
+
+    if (currentVersion is not null)
+    {
+        RepositoryLayout.StampVenvVersion(venvRoot, currentVersion);
+    }
+
+    AnsiConsole.MarkupLine("[green]Setup finished.[/]");
+    return true;
+}
+
+static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUpdate? availableUpdate, ISettingsStore settingsStore, bool isInstalled, string engineRoot, string scriptsRoot, string venvRoot)
 {
     const string createShortcutsChoice = "Create desktop shortcuts";
     const string changeDevicesChoice = "Change audio devices";
     const string setFolderChoice = "Set recordings/transcripts folder";
     const string setHfTokenChoice = "Set Hugging Face token";
+    const string repairEngineChoice = "Repair engine setup";
     const string backChoice = "Back";
 
     string? updateChoice = availableUpdate is null ? null : $"Update to v{availableUpdate.Version}";
     List<string> choices = [createShortcutsChoice, changeDevicesChoice, setFolderChoice, setHfTokenChoice];
+    if (isInstalled)
+    {
+        // Only meaningful for an installed copy -- a dev checkout runs Setup.ps1 by hand,
+        // and always against its own live src/engine, never a bootstrapped-and-stamped venv.
+        choices.Add(repairEngineChoice);
+    }
+
     if (updateChoice is not null)
     {
         choices.Add(updateChoice);
@@ -478,7 +578,7 @@ static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUp
 
     if (selection == createShortcutsChoice)
     {
-        CreateShortcuts();
+        CreateShortcuts(isInstalled);
     }
     else if (selection == changeDevicesChoice)
     {
@@ -492,6 +592,10 @@ static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUp
     {
         SetHuggingFaceToken();
     }
+    else if (selection == repairEngineChoice)
+    {
+        RunEngineBootstrap(engineRoot, scriptsRoot, venvRoot, updateChecker.CurrentVersion);
+    }
     else if (selection == updateChoice)
     {
         await AnsiConsole.Status().StartAsync(
@@ -502,10 +606,10 @@ static async Task RunSettingsMenuAsync(IUpdateChecker updateChecker, AvailableUp
 
 static void ChangeAudioDevices()
 {
-    string repositoryRoot;
+    string scriptsRoot;
     try
     {
-        repositoryRoot = RepositoryLayout.FindRepositoryRoot();
+        scriptsRoot = RepositoryLayout.FindScriptsRoot();
     }
     catch (InvalidOperationException ex)
     {
@@ -513,15 +617,15 @@ static void ChangeAudioDevices()
         return;
     }
 
-    RunSetAudioDevicesInteractively(repositoryRoot);
+    RunSetAudioDevicesInteractively(scriptsRoot);
 }
 
 static void SetHuggingFaceToken()
 {
-    string repositoryRoot;
+    string scriptsRoot;
     try
     {
-        repositoryRoot = RepositoryLayout.FindRepositoryRoot();
+        scriptsRoot = RepositoryLayout.FindScriptsRoot();
     }
     catch (InvalidOperationException ex)
     {
@@ -529,14 +633,14 @@ static void SetHuggingFaceToken()
         return;
     }
 
-    RunPowerShellScriptInteractively(Path.Combine(repositoryRoot, "scripts", "Save-HfToken.ps1"));
+    RunPowerShellScriptInteractively(Path.Combine(scriptsRoot, "Save-HfToken.ps1"));
 }
 
 static async Task SetRecordingsFolderAsync(ISettingsStore settingsStore)
 {
     OrchestratorSettings current = await settingsStore.LoadAsync().ConfigureAwait(false);
     string currentDisplay = string.IsNullOrWhiteSpace(current.RecordingsDirectory)
-        ? "(default: <repo>\\recordings)"
+        ? "(default)"
         : current.RecordingsDirectory;
     AnsiConsole.MarkupLine($"[grey]Current: {currentDisplay.EscapeMarkup()}[/]");
 
@@ -570,36 +674,66 @@ static async Task<AvailableUpdate?> CheckForUpdateWithTimeoutAsync(IUpdateChecke
 }
 
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-static int CreateShortcuts()
+static int CreateShortcuts(bool isInstalled)
 {
-    string repositoryRoot;
-    try
-    {
-        repositoryRoot = RepositoryLayout.FindRepositoryRoot();
-    }
-    catch (InvalidOperationException ex)
-    {
-        AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
-        return 1;
-    }
+    DesktopShortcutLaunchTarget launchTarget;
+    string iconsDirectory;
 
-    string? dotnetExecutable = ResolveOnPath(OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
-    if (dotnetExecutable is null)
+    if (isInstalled)
     {
-        AnsiConsole.MarkupLine("[red]Could not find dotnet on PATH.[/]");
-        return 1;
+        if (!VelopackLocator.IsCurrentSet)
+        {
+            AnsiConsole.MarkupLine("[red]Could not determine where this installed copy lives.[/]");
+            return 1;
+        }
+
+        IVelopackLocator locator = VelopackLocator.Current;
+        if (locator.AppContentDir is not { } appContentDir || locator.ThisExeRelativePath is not { } exeRelativePath)
+        {
+            AnsiConsole.MarkupLine("[red]Could not determine where this installed copy lives.[/]");
+            return 1;
+        }
+
+        string exePath = Path.Combine(appContentDir, exeRelativePath);
+        launchTarget = new DesktopShortcutLaunchTarget(exePath, string.Empty, appContentDir);
+        iconsDirectory = Path.Combine(appContentDir, "Assets", "icons");
+    }
+    else
+    {
+        string repositoryRoot;
+        try
+        {
+            repositoryRoot = RepositoryLayout.FindRepositoryRootForShortcuts();
+        }
+        catch (InvalidOperationException ex)
+        {
+            AnsiConsole.MarkupLine($"[red]{ex.Message.EscapeMarkup()}[/]");
+            return 1;
+        }
+
+        string? dotnetExecutable = ResolveOnPath(OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+        if (dotnetExecutable is null)
+        {
+            AnsiConsole.MarkupLine("[red]Could not find dotnet on PATH.[/]");
+            return 1;
+        }
+
+        string projectPath = Path.Combine(repositoryRoot, "src", "Cli", "VoiceLocalCli.Ui.Console");
+        launchTarget = new DesktopShortcutLaunchTarget(dotnetExecutable, $"run --project \"{projectPath}\" --", repositoryRoot);
+        iconsDirectory = Path.Combine(projectPath, "Assets", "icons");
     }
 
     string desktopDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
     var useCase = new CreateDesktopShortcutsUseCase(new RealShortcutWriter());
-    IReadOnlyList<DesktopShortcutDefinition> created = useCase.Run(repositoryRoot, desktopDirectory, dotnetExecutable);
+    IReadOnlyList<DesktopShortcutDefinition> created = useCase.Run(launchTarget, desktopDirectory, iconsDirectory);
 
     foreach (DesktopShortcutDefinition shortcut in created)
     {
         AnsiConsole.MarkupLine($"[green]Created[/] {shortcut.ShortcutPath.EscapeMarkup()}");
     }
 
-    AnsiConsole.MarkupLine(
-        "\n[grey]Each shortcut runs 'dotnet run' against this checkout -- if you move or delete this folder, re-run this menu item from the new location instead of expecting the old shortcuts to still work.[/]");
+    AnsiConsole.MarkupLine(isInstalled
+        ? "\n[grey]Each shortcut launches this installed copy straight into its own mode.[/]"
+        : "\n[grey]Each shortcut runs 'dotnet run' against this checkout -- if you move or delete this folder, re-run this menu item from the new location instead of expecting the old shortcuts to still work.[/]");
     return 0;
 }

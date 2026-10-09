@@ -235,3 +235,27 @@ a human.
     `LegacyConsoleCursor.Show`, unrelated to this change -- the same class of limitation
     as the `SelectionPrompt` menu itself, see above). Not verified: how the panel reads
     and wraps in a real interactive terminal window, same caveat as items 5 and 15.
+17. **The installed app crashed immediately with `Could not find 'VoiceLocalCli.slnx'`**
+    (found live installing the real v0.1.0 `Setup.exe`) -- see
+    `docs/adr/0005-installed-app-bootstraps-the-engine.md` for the full design. Verified
+    for real, twice:
+    - A throwaway copy of the built exe + a bundled `engine`/`scripts`/`Assets` folder
+      (simulating what `release.yml` now produces, in a plain folder with no `.slnx`
+      anywhere above it) correctly resolved the engine to the bundled folder next to the
+      exe instead of crashing.
+    - The actual v0.1.0 install already on this machine
+      (`%LOCALAPPDATA%\VoiceLocalCli\current\`), with its binaries and the same bundled
+      folders updated in place: correctly detected `IsInstalled = true`, resolved the
+      Python venv to the new stable `%LOCALAPPDATA%\voice-local-cli\engine\.venv\`
+      location (not the bundled, update-managed folder), correctly showed "missing" for
+      both the venv and ffmpeg, and reached the "run setup now?" bootstrap offer.
+
+    Not verified: actually confirming that prompt and watching the bundled `Setup.ps1`
+    run end to end (`AnsiConsole.Confirm` fails with "Failed to read input in
+    non-interactive mode" in this piped tool session -- the same class of limitation as
+    the `SelectionPrompt` menu, see above, needs a human at a real keyboard); the
+    "Repair engine setup" Settings item; "Create desktop shortcuts"' installed-mode
+    branch (`VelopackLocator.Current`-based target) actually producing a shortcut that
+    launches the installed exe and runs a mode; and the real `release.yml` bundling step
+    itself, which was only reproduced locally with the same `Copy-Item` commands, not
+    run on a hosted `windows-latest` runner yet -- needs a real `vX.Y.Z` tag push.

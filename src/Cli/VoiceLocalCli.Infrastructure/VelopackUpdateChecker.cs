@@ -23,6 +23,8 @@ public sealed class VelopackUpdateChecker : IUpdateChecker
 
     public bool IsInstalled => _manager.IsInstalled;
 
+    public string? CurrentVersion => IsInstalled ? _manager.CurrentVersion?.ToString() : null;
+
     public async Task<AvailableUpdate?> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
         if (!IsInstalled)

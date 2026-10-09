@@ -5,6 +5,11 @@ namespace VoiceLocalCli.Application.Tests;
 
 public sealed class CreateDesktopShortcutsUseCaseTests
 {
+    private static readonly DesktopShortcutLaunchTarget LaunchTarget = new(
+        TargetPath: @"C:\dotnet\dotnet.exe",
+        ArgumentsPrefix: @"run --project ""C:\repo\src\Cli\VoiceLocalCli.Ui.Console"" --",
+        WorkingDirectory: @"C:\repo");
+
     [Fact]
     public void WritesAllThreeShortcutsThroughTheWriter()
     {
@@ -12,7 +17,7 @@ public sealed class CreateDesktopShortcutsUseCaseTests
         var useCase = new CreateDesktopShortcutsUseCase(writer);
 
         IReadOnlyList<DesktopShortcutDefinition> result =
-            useCase.Run(@"C:\repo", @"C:\Users\frank\Desktop", @"C:\dotnet\dotnet.exe");
+            useCase.Run(LaunchTarget, @"C:\Users\frank\Desktop", @"C:\repo\icons");
 
         Assert.Equal(3, writer.CreateCalls.Count);
         Assert.Equal(result, writer.CreateCalls);
@@ -25,9 +30,9 @@ public sealed class CreateDesktopShortcutsUseCaseTests
         var useCase = new CreateDesktopShortcutsUseCase(writer);
 
         IReadOnlyList<DesktopShortcutDefinition> result =
-            useCase.Run(@"C:\repo", @"C:\Users\frank\Desktop", @"C:\dotnet\dotnet.exe");
+            useCase.Run(LaunchTarget, @"C:\Users\frank\Desktop", @"C:\repo\icons");
         IReadOnlyList<DesktopShortcutDefinition> expected =
-            DesktopShortcutPlan.BuildAll(@"C:\repo", @"C:\Users\frank\Desktop", @"C:\dotnet\dotnet.exe");
+            DesktopShortcutPlan.BuildAll(LaunchTarget, @"C:\Users\frank\Desktop", @"C:\repo\icons");
 
         Assert.Equal(expected, result);
     }
