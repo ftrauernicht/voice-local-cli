@@ -23,9 +23,18 @@ review":
   coverage)`, `PowerShell (PSScriptAnalyzer)` (job names from `.github/workflows/ci.yml`),
   `dotnet format`, `ruff format` (from `format.yml`), `Secret scan`, `Vulnerability scan`
   (from `security.yml`). Require branches to be up to date before merging.
-- **Bypass list: empty.** With no bypass actor, nobody -- including the repo owner --
-  can skip this rule via a bypass grant. The only way around it is deliberately editing
-  or disabling the ruleset itself, a conscious two-step action, never an accidental push.
+- **Bypass list: the "Repository admin" role, bypass mode "pull request."** Originally
+  configured with an empty bypass list, but GitHub categorically refuses to let anyone
+  approve their own pull request, API included -- confirmed for real via `gh pr review
+  --approve` on this project's own PR #1 (`GraphQL: Review Can not approve your own pull
+  request`). With `* @ftrauernicht` as the only entry in `CODEOWNERS`, an empty bypass
+  list would have meant no pull request on this repo could ever be merged by anyone.
+  "pull request" bypass mode (not "always") keeps the actual protection: it only lifts
+  the review-count/status-check requirements once a change is already inside a pull
+  request -- direct pushes to `main` are still rejected outright for everyone, admin
+  included (`gh pr merge --admin` is required even for the repo owner to merge past the
+  missing approval; a plain `git push origin main` still gets `GH013: Repository rule
+  violations`).
 
 ### Ruleset 2: `protect-branch-integrity`
 
@@ -40,9 +49,9 @@ review":
 
 Both rulesets are created directly in **Active** mode via the API (`PUT/POST
 repos/{owner}/{repo}/rulesets`) -- confirmed by reading each one back afterward:
-`require-pr-review` reports `current_user_can_bypass: never`, `protect-branch-integrity`
-reports `current_user_can_bypass: always` for the repo owner, matching the bypass split
-above exactly.
+`require-pr-review` reports `current_user_can_bypass: pull_requests_only` for the repo
+owner, `protect-branch-integrity` reports `current_user_can_bypass: always`, matching
+the bypass split above exactly.
 
 ## Required status checks (names from the `name:` of each job)
 
