@@ -282,8 +282,25 @@ a human.
     confusing `CommandNotFoundException` from `pip` trying to call a `python.exe` that
     was never created. Both fixed: the Python step now checks `py -3.14 --version`
     specifically, and venv creation checks `$LASTEXITCODE`/`Test-Path` before declaring
-    success. Not yet verified: that the fixed "install Python 3.14 via winget" path
-    actually works on a real machine with no 3.14 at all -- every machine this has run
-    on so far either already had 3.14 (the original dev machine) or now correctly stops
-    with a clear error instead of installing it (the second machine, not yet re-run
-    after the fix).
+    success. **Update (same day, v0.1.2):** the second machine was re-run with the fix
+    and confirmed it -- ffmpeg already present, Python 3.14 correctly detected as
+    missing and installed via winget for real (a genuinely fresh install, not a
+    simulated one: real winget download/hash-verify/install output), venv created
+    successfully. This also confirms the "install Python 3.14 via winget" path noted as
+    unverified above.
+19. **The pip-install step looked hung, twice, on two different real machines
+    (2026-10-10) -- not a bug, but a real UX problem.** `pip install -e "$engineDir"
+    --quiet` pulls in `torch`/`transformers`/`pyannote.audio` with zero visible output
+    for several minutes; both times it was reported as "nothing happens, can't go back,
+    ESC does nothing" (ESC genuinely does nothing here by design -- the bootstrap runs
+    `Process.WaitForExit()` synchronously, before the per-session `ConsoleEscapeWatcher`
+    is ever wired up; that's a session concept, not a setup-script one). The second time,
+    it was closed mid-install after a few minutes of waiting. Confirmed not harmful:
+    `Setup.ps1`'s pip install runs unconditionally after the venv exists/was-just-created
+    check, so simply running the bootstrap again resumes/completes it -- pip skips
+    already-installed packages. Fixed by dropping `--quiet` from the main pip install (pip's
+    own `Collecting`/`Downloading`/`Installing` output is the real fix, not a bespoke
+    progress bar) plus an explicit "this can take several minutes" notice before it
+    starts. Not yet verified: that the real, now-visible pip output actually reads as
+    reassuring rather than alarming in a real terminal -- needs a human to watch a real
+    run, same as every other visual/UX judgment call in this app.
