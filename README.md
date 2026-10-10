@@ -35,7 +35,7 @@ below, but it is explicitly not the feature this project is built around.
 
 | | |
 |---|---|
-| **Engine** | Python 3.11+, `faster-whisper` (CPU) or OpenVINO GenAI (Intel GPU), `webrtcvad` for pause detection |
+| **Engine** | Python 3.11+, `faster-whisper` (CPU, or NVIDIA GPU via CUDA) or OpenVINO GenAI (Intel GPU), `webrtcvad` for pause detection |
 | **Orchestrator** | .NET 10, Spectre.Console, hexagonal architecture (`Domain`/`Application`/`Infrastructure`/`Ui.Console`) |
 | **Tests** | pytest (87%+ line coverage) + xUnit v3 (98%+ line coverage on the hexagonal core) -- both gated at 85% in CI |
 | **CI/CD** | GitHub Actions: lint + test + coverage (Python, .NET, PowerShell), format, security scanning, Renovate |
@@ -52,11 +52,12 @@ Three Python entry points under `src/engine/`, each reading audio from a WAV fil
 | Live | `transcribe_live.py` | Records a mixed call-audio bus (needs Voicemeeter), shows a continuously updating transcript while the call is in progress. |
 | Call | `transcribe.py` | Records the same mixed bus, then runs a full, accurate transcription with speaker diarization after the call ends. |
 
-All three use `faster-whisper` (CPU) or OpenVINO GenAI's `WhisperPipeline` (Intel GPU,
-used automatically when available) for transcription, `webrtcvad` for pause detection,
-and a locally growing hotwords list (`_hotwords.py`) that improves recognition of names
-and jargon you use often -- without you having to maintain it by hand (it asks, once a
-word recurs often enough).
+All three use `faster-whisper` (CPU, or NVIDIA GPU via CUDA) or OpenVINO GenAI's
+`WhisperPipeline` (Intel GPU) for transcription -- whichever accelerated backend is
+available is used automatically, see "Supported optional GPU acceleration" below --
+`webrtcvad` for pause detection, and a locally growing hotwords list (`_hotwords.py`)
+that improves recognition of names and jargon you use often -- without you having to
+maintain it by hand (it asks, once a word recurs often enough).
 
 The .NET orchestrator (`src/Cli/`) drives the Python engine as a child process and parses
 its structured `@@STATE:` status events (see `src/engine/CONTRACT.md`) to show a live
@@ -104,9 +105,28 @@ diarization.
 | `ffmpeg` | Yes | Audio capture | CPU | Via Windows' `dshow` input |
 | A microphone | Yes | Audio input | -- | Any normal input device |
 | .NET 10 SDK | Yes, for the orchestrator | Builds/runs `src/Cli/` | CPU | Not needed if driving the Python engine directly |
-| Intel GPU + OpenVINO | Optional | Faster transcription | GPU | Falls back to CPU automatically if absent |
+| GPU acceleration | Optional | Faster transcription | GPU | Falls back to CPU automatically if absent -- see "Supported optional GPU acceleration" below |
 | Voicemeeter | Optional | Mixes in the remote party's audio | -- | Only for Call/Live mode, never for Dictate |
 | Hugging Face account/token | Optional | Speaker diarization | -- | Only for Call mode's `pyannote.audio` pipeline; set via Settings > "Set Hugging Face token" |
+
+## Supported optional GPU acceleration
+
+Every mode falls back to CPU automatically -- none of this is required. When more than one
+accelerated backend is usable on the same machine, NVIDIA is tried first (a discrete GPU is
+typically faster than integrated graphics for this workload), then Intel.
+
+| Vendor | Backend | Status | Setup |
+|---|---|---|---|
+| Intel (integrated or Arc) | OpenVINO | Supported, fully automatic | `scripts/Setup.ps1` installs everything |
+| NVIDIA | CUDA (via `faster-whisper`) | Supported, manual prerequisite | Install cuBLAS + cuDNN 9 for CUDA 12 yourself ([NVIDIA cuDNN](https://developer.nvidia.com/cudnn), [NVIDIA cuBLAS](https://developer.nvidia.com/cublas)) -- no extra pip install, picked up automatically once present |
+| *(open)* | AMD/ROCm or others | Not implemented | Contributions welcome -- `src/engine/_cuda_backend.py`/`_openvino_backend.py` show the pattern a new backend follows |
+
+NVIDIA's path needs no new Python package (`faster-whisper` already supports
+`device="cuda"` natively) but, unlike Intel's, has no clean `pip`/`winget`-only install on
+Windows for the CUDA runtime itself -- see
+[`docs/adr/0006-nvidia-cuda-as-a-second-gpu-backend.md`](docs/adr/0006-nvidia-cuda-as-a-second-gpu-backend.md)
+for why. Once the runtime libraries are on `PATH`, `--backend auto` (the default) picks up
+CUDA on its own -- no flag needed; `--backend cuda` forces it for troubleshooting.
 
 ## Models and their licenses
 
@@ -132,8 +152,8 @@ The orchestrator checks GitHub Releases for a newer version on startup (see
 `docs/adr/0004-velopack-for-auto-updates.md`) -- never automatically, never mid-session:
 finding one only shows a notice, and applying it is a separate action in the Settings
 menu. Running from a source checkout (`dotnet run`, the normal case while developing)
-skips the check entirely, since there's no installed copy to update. No release has been
-published yet, so there is currently nothing to update to.
+skips the check entirely, since there's no installed copy to update. Installer downloads
+are on the [Releases page](https://github.com/ftrauernicht/voice-local-cli/releases).
 
 See `docs/adr/` for the architecture decisions behind this project, and
 `docs/MANUAL_VERIFICATION.md` for what's confirmed only by hand, not by CI.

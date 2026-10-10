@@ -298,10 +298,36 @@ class TestMain:
         assert "hello" in content
         assert content.startswith("00:00")
 
-    def test_gpu_path_selected_when_available_and_supported(self, tmp_path, monkeypatch):
+    def test_cuda_path_selected_when_available(self, tmp_path, monkeypatch):
         audio = tmp_path / "call.wav"
         _write_wav(audio, [0] * 16000)
         monkeypatch.setattr(sys, "argv", ["transcribe.py", str(audio), "--no-diarization"])
+        monkeypatch.setattr(t._hotwords, "load_hotword_string", lambda: "")
+        fake_model = object()
+        monkeypatch.setattr(t.cu, "try_load_model", lambda model_size: fake_model)
+
+        cuda_called = []
+        monkeypatch.setattr(
+            t, "transcribe_with_model",
+            lambda model, path, language, hotwords="": (cuda_called.append(model) or ([{"start": 0.0, "end": 1.0, "text": "x"}], [])),
+        )
+        gpu_called = []
+        monkeypatch.setattr(t, "transcribe_gpu", lambda *a, **k: (gpu_called.append(1) or ([], [])))
+        cpu_called = []
+        monkeypatch.setattr(t, "transcribe", lambda *a, **k: (cpu_called.append(1) or ([], [])))
+
+        t.main()
+
+        # CUDA wins outright -- OpenVINO and plain CPU are never even attempted.
+        assert cuda_called == [fake_model]
+        assert gpu_called == []
+        assert cpu_called == []
+
+    def test_gpu_path_selected_when_cuda_unavailable_and_supported(self, tmp_path, monkeypatch):
+        audio = tmp_path / "call.wav"
+        _write_wav(audio, [0] * 16000)
+        monkeypatch.setattr(sys, "argv", ["transcribe.py", str(audio), "--no-diarization"])
+        monkeypatch.setattr(t.cu, "try_load_model", lambda model_size: None)
         monkeypatch.setattr(t.al, "is_supported", lambda lang: True)
         monkeypatch.setattr(t.ov, "is_available", lambda: True)
         monkeypatch.setattr(t.ov, "ensure_model", lambda: True)
@@ -319,6 +345,21 @@ class TestMain:
 
         assert gpu_called == [1]
         assert cpu_called == []
+
+    def test_cpu_path_selected_when_neither_gpu_works(self, tmp_path, monkeypatch):
+        audio = tmp_path / "call.wav"
+        _write_wav(audio, [0] * 16000)
+        monkeypatch.setattr(sys, "argv", ["transcribe.py", str(audio), "--no-diarization"])
+        monkeypatch.setattr(t.cu, "try_load_model", lambda model_size: None)
+        monkeypatch.setattr(t.ov, "is_available", lambda: False)
+        monkeypatch.setattr(t._hotwords, "load_hotword_string", lambda: "")
+
+        cpu_called = []
+        monkeypatch.setattr(t, "transcribe", lambda *a, **k: (cpu_called.append(1) or ([], [])))
+
+        t.main()
+
+        assert cpu_called == [1]
 
     def test_diarization_groups_words_by_speaker(self, tmp_path, monkeypatch):
         audio = tmp_path / "call.wav"

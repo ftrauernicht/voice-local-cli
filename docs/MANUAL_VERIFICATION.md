@@ -312,3 +312,19 @@ a human.
     Not yet verified: that the real, now-visible pip output actually reads as reassuring
     rather than alarming in a real terminal -- needs a human to watch a real run, same as
     every other visual/UX judgment call in this app.
+20. **NVIDIA GPU acceleration via CUDA (`_cuda_backend.py`, 2026-10-10)** -- see
+    `docs/adr/0006-nvidia-cuda-as-a-second-gpu-backend.md` for the full design (why CUDA's
+    own availability can only be confirmed by actually attempting to load a model, the
+    CUDA → OpenVINO → CPU priority, the new `--backend cuda` value). Verified: `pytest
+    --cov` (131 tests, 87.99% engine coverage, `_cuda_backend.py` itself 100%),
+    `ruff check`/`ruff format --check` clean (both run from `src/engine`, matching CI's
+    `working-directory`). **No NVIDIA GPU exists on the machine this was built on** -- the
+    detection/fallback logic is confirmed only against mocks (no real GPU present means
+    `_cuda_backend.try_load_model()`'s real try/except path was also exercised for real,
+    just always hitting the "no GPU" branch, same as `_openvino_backend.is_available()`
+    always did on this machine before an Intel GPU was ever involved). Needs a human on
+    actual NVIDIA hardware to confirm: the cuBLAS/cuDNN prerequisite actually works once
+    installed by hand per the new README section, `--backend auto` actually prefers CUDA
+    over CPU and produces correct transcriptions, and whether `compute_type="float16"` is
+    the right default across different NVIDIA GPU generations (older cards may need
+    `int8_float16` instead -- not yet tested either way).
