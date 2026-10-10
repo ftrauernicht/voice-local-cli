@@ -74,24 +74,60 @@ class TestReadFrameRange:
 
 
 class TestLoadBackendBranching:
+    """Priority for auto/gpu is CUDA, then OpenVINO, then CPU (see load_backend's own doc
+    comment) -- every test here explicitly controls transcribe_live.cu (the _cuda_backend
+    module) too, not just .ov, so a test isn't accidentally "passing" only because this
+    machine happens to have no real NVIDIA GPU for cu.try_load_model's real fallback to
+    hit (see _cuda_backend.py's own tests for that fallback in isolation)."""
+
     def test_cpu_requested_never_touches_gpu(self):
         with patch("transcribe_live.ov") as mock_ov, \
+             patch("transcribe_live.cu") as mock_cu, \
              patch("faster_whisper.WhisperModel") as mock_model_cls:
             mock_model_cls.return_value = MagicMock()
             tl.load_backend("cpu", "de")
             mock_ov.is_available.assert_not_called()
+            mock_cu.try_load_model.assert_not_called()
 
-    def test_gpu_requested_but_unavailable_warns_and_falls_back(self, capsys):
+    def test_cuda_requested_but_unavailable_warns_and_falls_back_to_cpu(self, capsys):
         with patch("transcribe_live.ov") as mock_ov, \
+             patch("transcribe_live.cu") as mock_cu, \
              patch("faster_whisper.WhisperModel") as mock_model_cls:
+            mock_cu.try_load_model.return_value = None
+            mock_model_cls.return_value = MagicMock()
+            tl.load_backend("cuda", "de")
+            captured = capsys.readouterr()
+            assert "falling back to CPU" in captured.err
+            # An explicit "cuda" request never falls through to OpenVINO -- only "auto"/"gpu" do.
+            mock_ov.is_available.assert_not_called()
+
+    def test_gpu_requested_falls_back_to_cpu_when_neither_gpu_works(self, capsys):
+        with patch("transcribe_live.ov") as mock_ov, \
+             patch("transcribe_live.cu") as mock_cu, \
+             patch("faster_whisper.WhisperModel") as mock_model_cls:
+            mock_cu.try_load_model.return_value = None
             mock_ov.is_available.return_value = False
             mock_model_cls.return_value = MagicMock()
             tl.load_backend("gpu", "de")
             captured = capsys.readouterr()
             assert "falling back to CPU" in captured.err
 
-    def test_auto_prefers_gpu_when_available(self):
-        with patch("transcribe_live.ov") as mock_ov:
+    def test_auto_prefers_cuda_when_available(self):
+        with patch("transcribe_live.cu") as mock_cu, patch("transcribe_live.ov") as mock_ov:
+            fake_model = MagicMock()
+            fake_model.transcribe.return_value = ([MagicMock(text=" hi")], None)
+            mock_cu.try_load_model.return_value = fake_model
+
+            transcribe = tl.load_backend("auto", "de")
+            result = transcribe(np.zeros(16000, dtype=np.float32))
+
+            # CUDA won outright -- OpenVINO's own availability is never even checked.
+            mock_ov.is_available.assert_not_called()
+            assert result == "hi"
+
+    def test_auto_prefers_openvino_when_cuda_unavailable(self):
+        with patch("transcribe_live.cu") as mock_cu, patch("transcribe_live.ov") as mock_ov:
+            mock_cu.try_load_model.return_value = None
             mock_ov.is_available.return_value = True
             mock_ov.ensure_model.return_value = True
             mock_pipeline = MagicMock()
@@ -105,9 +141,11 @@ class TestLoadBackendBranching:
             mock_ov.transcribe_chunk.assert_called_once()
             assert result == "hello"
 
-    def test_auto_falls_back_to_cpu_when_gpu_model_fails(self):
+    def test_auto_falls_back_to_cpu_when_neither_gpu_works(self):
         with patch("transcribe_live.ov") as mock_ov, \
+             patch("transcribe_live.cu") as mock_cu, \
              patch("faster_whisper.WhisperModel") as mock_model_cls:
+            mock_cu.try_load_model.return_value = None
             mock_ov.is_available.return_value = True
             mock_ov.ensure_model.return_value = False  # download failed
             mock_model_cls.return_value = MagicMock()
@@ -119,8 +157,10 @@ class TestLoadBackendBranching:
 
     def test_hotwords_passed_through_on_cpu_path(self):
         with patch("transcribe_live.ov") as mock_ov, \
+             patch("transcribe_live.cu") as mock_cu, \
              patch("faster_whisper.WhisperModel") as mock_model_cls:
             mock_ov.is_available.return_value = False
+            mock_cu.try_load_model.return_value = None
             mock_model = MagicMock()
             mock_model.transcribe.return_value = ([], None)
             mock_model_cls.return_value = mock_model
@@ -133,8 +173,10 @@ class TestLoadBackendBranching:
 
     def test_no_hotwords_kwarg_when_empty(self):
         with patch("transcribe_live.ov") as mock_ov, \
+             patch("transcribe_live.cu") as mock_cu, \
              patch("faster_whisper.WhisperModel") as mock_model_cls:
             mock_ov.is_available.return_value = False
+            mock_cu.try_load_model.return_value = None
             mock_model = MagicMock()
             mock_model.transcribe.return_value = ([], None)
             mock_model_cls.return_value = mock_model

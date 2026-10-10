@@ -6,9 +6,9 @@ results are too unreliable to be useful -- just timestamps, which is faster and 
 that extra source of error. Diarization stays reserved for the final transcription
 (transcribe.py), which sees the whole recording at once.
 
-Uses an Intel GPU via OpenVINO automatically if available (significantly faster than CPU,
-see README.md) -- otherwise faster-whisper/CPU as before, with no change for machines
-without a matching GPU.
+Uses an NVIDIA GPU via CUDA, or an Intel GPU via OpenVINO, automatically if available
+(significantly faster than CPU, see README.md's "Supported optional GPU acceleration") --
+otherwise faster-whisper/CPU as before, with no change for machines without either.
 """
 
 import argparse
@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 import _console as c
+import _cuda_backend as cu
 import _hotwords
 import _openvino_backend as ov
 
@@ -67,30 +68,50 @@ def read_frame_range(path: Path, data_offset: int, start_frame: int, end_frame: 
 
 
 def load_backend(requested: str, language: str, hotwords: str = ""):
-    """Selects and loads the transcription backend. Returns a samples -> text function."""
-    use_gpu = requested in ("auto", "gpu") and ov.is_available() and ov.ensure_model()
-    if requested == "gpu" and not use_gpu:
+    """Selects and loads the transcription backend. Returns a samples -> text function.
+
+    Priority for "auto"/"gpu": NVIDIA GPU via CUDA, then Intel GPU via OpenVINO, then CPU --
+    see _cuda_backend.py's module doc for why CUDA's availability can only be confirmed by
+    actually attempting to load a model, unlike OpenVINO's cheap up-front check.
+    """
+    model_name = "small"
+
+    if requested in ("auto", "gpu", "cuda"):
+        cuda_model = cu.try_load_model(model_name)
+        if cuda_model is not None:
+            c.ok("GPU model ready (CUDA).")
+            return _build_transcribe(cuda_model, language, hotwords)
+        if requested == "cuda":
+            c.warn("CUDA backend requested but not available -- falling back to CPU.")
+
+    use_openvino = requested in ("auto", "gpu") and ov.is_available() and ov.ensure_model()
+    if requested == "gpu" and not use_openvino:
         c.warn("GPU backend requested but not available -- falling back to CPU.")
 
-    if use_gpu:
+    if use_openvino:
         c.info("Loading GPU pipeline (OpenVINO, large-v3-turbo) ...")
         pipeline = ov.load_pipeline()
         c.ok("GPU pipeline ready.")
         return lambda samples: ov.transcribe_chunk(pipeline, samples, language, hotwords)
 
-    model_name = "small"
     c.info(f"Loading CPU model ({model_name}) ...")
     from faster_whisper import WhisperModel
 
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
     c.ok("CPU model ready.")
+    return _build_transcribe(model, language, hotwords)
 
-    def transcribe_cpu(samples):
+
+def _build_transcribe(model, language: str, hotwords: str):
+    """Shared by the CPU and CUDA paths -- both load a faster_whisper.WhisperModel and call
+    it the same way, only `device`/`compute_type` differ at load time."""
+
+    def transcribe_fn(samples):
         kwargs = {"hotwords": hotwords} if hotwords else {}
         segments, _info = model.transcribe(samples, language=language, vad_filter=True, **kwargs)
         return " ".join(s.text.strip() for s in segments).strip()
 
-    return transcribe_cpu
+    return transcribe_fn
 
 
 def main() -> None:
@@ -99,9 +120,9 @@ def main() -> None:
     parser.add_argument("--interval", type=float, default=8.0, help="Seconds between two chunks")
     parser.add_argument(
         "--backend",
-        choices=["auto", "cpu", "gpu"],
+        choices=["auto", "cpu", "gpu", "cuda"],
         default="auto",
-        help="auto = use GPU if available, else CPU (default)",
+        help="auto = NVIDIA GPU (CUDA) if available, else Intel GPU (OpenVINO), else CPU (default)",
     )
     parser.add_argument("--language", default="de")
     parser.add_argument(

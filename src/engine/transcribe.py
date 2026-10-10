@@ -1,12 +1,15 @@
 """Transcribes a recording and assigns speakers (faster-whisper + pyannote).
 
-Two transcription paths for the text itself:
-- CPU (faster-whisper, large-v3-turbo): comes with word timestamps directly, as before.
-- GPU (OpenVINO, --backend gpu/auto): significantly faster, but without word timestamps --
-  those are recovered afterwards per segment via Forced Alignment (see
+Three transcription paths for the text itself, tried in this order for --backend auto/gpu:
+- NVIDIA GPU (CUDA, --backend cuda/gpu/auto): faster-whisper's own device="cuda" support --
+  same word-timestamp behavior as CPU, no language restriction, no alignment step. See
+  _cuda_backend.py.
+- Intel GPU (OpenVINO, --backend gpu/auto): significantly faster, but without word
+  timestamps -- those are recovered afterwards per segment via Forced Alignment (see
   _align_backend.py). Only for languages with a matching alignment model (as of
-  2026-10-09: German, English); for an unsupported language, --backend auto falls back to
-  the CPU path automatically.
+  2026-10-09: German, English); for an unsupported language this path is skipped.
+- CPU (faster-whisper, large-v3-turbo): comes with word timestamps directly, as before --
+  the fallback if neither GPU path is available/requested.
 """
 
 import argparse
@@ -18,6 +21,7 @@ import numpy as np
 
 import _align_backend as al
 import _console as c
+import _cuda_backend as cu
 import _hotwords
 import _openvino_backend as ov
 
@@ -42,14 +46,13 @@ def load_wav_16k_mono(audio_path: Path) -> np.ndarray:
     return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-def transcribe(
-    audio_path: Path, model_size: str, language: str | None, hotwords: str = ""
+def transcribe_with_model(
+    model, audio_path: Path, language: str | None, hotwords: str = ""
 ) -> tuple[list[dict], list[dict]]:
-    """Returns (segments, words) -- words with their own timestamp for speaker assignment,
-    segments as a plain fallback when speaker diarization isn't available."""
-    from faster_whisper import WhisperModel
-
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    """Returns (segments, words) using an already-loaded faster-whisper model -- words with
+    their own timestamp for speaker assignment, segments as a plain fallback when speaker
+    diarization isn't available. Shared by the CPU and CUDA paths; only how `model` itself
+    was constructed (device/compute_type) differs between them."""
     audio = load_wav_16k_mono(audio_path)
     kwargs = {"hotwords": hotwords} if hotwords else {}
     segments, _info = model.transcribe(audio, language=language, vad_filter=True, word_timestamps=True, **kwargs)
@@ -60,6 +63,16 @@ def transcribe(
         for w in s.words or []:
             words.append({"start": w.start, "end": w.end, "text": w.word})
     return seg_list, words
+
+
+def transcribe(
+    audio_path: Path, model_size: str, language: str | None, hotwords: str = ""
+) -> tuple[list[dict], list[dict]]:
+    """CPU path: builds a faster-whisper model, then delegates to transcribe_with_model()."""
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    return transcribe_with_model(model, audio_path, language, hotwords)
 
 
 def _split_evenly(segment: dict) -> list[dict]:
@@ -170,9 +183,10 @@ def main() -> None:
     parser.add_argument("--model", default="large-v3-turbo")
     parser.add_argument(
         "--backend",
-        choices=["auto", "cpu", "gpu"],
+        choices=["auto", "cpu", "gpu", "cuda"],
         default="auto",
-        help="auto = use GPU+alignment if available and the language is supported, else CPU (default)",
+        help="auto = NVIDIA GPU (CUDA) if available, else Intel GPU+alignment if available "
+        "and the language is supported, else CPU (default)",
     )
     parser.add_argument("--language", default="de")
     parser.add_argument("--no-diarization", action="store_true")
@@ -182,16 +196,31 @@ def main() -> None:
         c.err(f"File not found: {args.audio}")
         raise SystemExit(1)
 
-    use_gpu = (
-        args.backend in ("auto", "gpu") and al.is_supported(args.language) and ov.is_available() and ov.ensure_model()
+    # Priority for auto/gpu: NVIDIA (CUDA) first -- same word-timestamp behavior as CPU, no
+    # language restriction, no alignment step -- then Intel (OpenVINO), then CPU. See
+    # _cuda_backend.py's module doc for why CUDA's own availability can only be confirmed by
+    # actually attempting to load a model, unlike OpenVINO's cheap up-front check.
+    cuda_model = cu.try_load_model(args.model) if args.backend in ("auto", "gpu", "cuda") else None
+    if args.backend == "cuda" and cuda_model is None:
+        c.warn("CUDA backend requested but not available -- falling back to CPU.")
+
+    use_openvino = (
+        cuda_model is None
+        and args.backend in ("auto", "gpu")
+        and al.is_supported(args.language)
+        and ov.is_available()
+        and ov.ensure_model()
     )
-    if args.backend == "gpu" and not use_gpu:
+    if args.backend == "gpu" and cuda_model is None and not use_openvino:
         c.warn("GPU backend requested, but not available or the language isn't supported -- falling back to CPU.")
 
     hotwords = _hotwords.load_hotword_string()
 
     c.state("transcribing_full")
-    if use_gpu:
+    if cuda_model is not None:
+        c.info(f"Transcribing {args.audio.name} via GPU (CUDA, {args.model}) ...")
+        segments, words = transcribe_with_model(cuda_model, args.audio, args.language, hotwords)
+    elif use_openvino:
         c.info(f"Transcribing {args.audio.name} via GPU (OpenVINO) + Forced Alignment ...")
         segments, words = transcribe_gpu(args.audio, args.language, hotwords)
     else:

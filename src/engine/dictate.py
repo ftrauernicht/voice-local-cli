@@ -175,9 +175,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--backend",
-        choices=["auto", "cpu", "gpu"],
+        choices=["auto", "cpu", "gpu", "cuda"],
         default="auto",
-        help="auto = use GPU if available, else CPU (default)",
+        help="auto = NVIDIA GPU (CUDA) if available, else Intel GPU (OpenVINO), else CPU (default)",
     )
     parser.add_argument("--language", default="de")
     parser.add_argument(

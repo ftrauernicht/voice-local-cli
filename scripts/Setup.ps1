@@ -143,6 +143,10 @@ Write-Step "Still to do by hand (details in README.md)"
 Write-Todo "Pick a microphone: .\Set-AudioDevices.ps1 (choose the 'mic' device -- this is all Dictate mode needs)"
 Write-Todo "Dictate mode is now ready to try"
 Write-Host ""
+Write-Host "Optional, any mode, only if you have an NVIDIA GPU (faster than CPU, same quality" -ForegroundColor DarkGray
+Write-Host "and timestamps as CPU -- no extra pip install, but no clean winget path either):" -ForegroundColor DarkGray
+Write-Todo "Install cuBLAS + cuDNN 9 for CUDA 12 -- see README.md, 'Supported optional GPU acceleration'"
+Write-Host ""
 Write-Host "Only if you also want Call/Live mode (recording a call with the remote party's" -ForegroundColor DarkGray
 Write-Host "audio mixed in -- NOT needed for Dictate mode):" -ForegroundColor DarkGray
 Write-Todo "Install Voicemeeter: winget install VB-Audio.Voicemeeter (or from vb-audio.com)"
