@@ -264,3 +264,26 @@ a human.
     launches the installed exe and runs a mode; and the real `release.yml` bundling step
     itself, which was only reproduced locally with the same `Copy-Item` commands, not
     run on a hosted `windows-latest` runner yet -- needs a real `vX.Y.Z` tag push.
+18. **The real bootstrap confirmation (item 17's main gap) is now confirmed, twice, by
+    Frank at a real keyboard (2026-10-10).** First machine: confirmed, `Setup.ps1` ran
+    end to end, installed the venv and all packages for real, the app then showed
+    `Python engine OK (bootstrapped for v0.1.0)` and no more bootstrap offer -- also
+    directly confirmed the resulting venv's `pip list` has `torch`/`transformers`/
+    `faster_whisper`/`pyannote.audio` actually installed, and ffmpeg resolving correctly
+    once a fresh shell's PATH picked up the winget install. Second machine: confirmed a
+    real, previously-unknown bug instead -- `Setup.ps1`'s "Python" step only checked that
+    *some* `py`/`python` command was on PATH, not that Python 3.14 specifically was
+    registered with the `py` launcher (step 3 hardcodes `py -3.14`). This second machine
+    had Python 3.10 pre-installed for something else, so the check passed, 3.14 was
+    never installed, and `py -3.14 -m venv $venvDir` then failed with "Requested Python
+    version (3.14) not installed" -- compounded by a second bug: the venv-creation step
+    didn't check whether that command actually succeeded before printing `[ok] venv
+    created` and moving on, so the real error only surfaced several steps later as a
+    confusing `CommandNotFoundException` from `pip` trying to call a `python.exe` that
+    was never created. Both fixed: the Python step now checks `py -3.14 --version`
+    specifically, and venv creation checks `$LASTEXITCODE`/`Test-Path` before declaring
+    success. Not yet verified: that the fixed "install Python 3.14 via winget" path
+    actually works on a real machine with no 3.14 at all -- every machine this has run
+    on so far either already had 3.14 (the original dev machine) or now correctly stops
+    with a clear error instead of installing it (the second machine, not yet re-run
+    after the fix).

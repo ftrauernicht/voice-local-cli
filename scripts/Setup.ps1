@@ -63,15 +63,26 @@ if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
     Write-Ok "installed"
 }
 
-# --- 2. Python --------------------------------------------------------
-Write-Step "Python"
-$pyCmd = Get-Command py -ErrorAction SilentlyContinue
-if (-not $pyCmd) { $pyCmd = Get-Command python -ErrorAction SilentlyContinue }
-if ($pyCmd) {
-    Write-Ok "already present ($(& $pyCmd.Source --version 2>&1))"
+# --- 2. Python 3.14 -----------------------------------------------------
+# Specifically 3.14, not "any Python" -- step 3 below hardcodes `py -3.14` so every
+# machine builds the venv against the same interpreter version. Checking only "is some
+# py/python command on PATH" (this step's original check) passes on a machine with an
+# older Python already installed for something else, then step 3's `py -3.14` fails --
+# found for real on a second machine that only had Python 3.10.
+Write-Step "Python 3.14"
+$py314Version = $null
+try {
+    $py314Version = & py -3.14 --version 2>&1
+    if ($LASTEXITCODE -ne 0) { $py314Version = $null }
+} catch {
+    $py314Version = $null
+}
+
+if ($py314Version) {
+    Write-Ok "already present ($py314Version)"
 } else {
-    Write-Host "  No Python installation found -- installing Python 3.14 via winget ..."
-    Install-WingetPackage -Id "Python.Python.3.14" -FriendlyName "Python"
+    Write-Host "  Python 3.14 not found via the 'py' launcher -- installing via winget ..."
+    Install-WingetPackage -Id "Python.Python.3.14" -FriendlyName "Python 3.14"
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
                 [System.Environment]::GetEnvironmentVariable("Path", "User")
     Write-Ok "installed"
@@ -85,6 +96,14 @@ Write-Step "Python venv (installed from $engineDir\pyproject.toml)"
 if (-not (Test-Path "$venvDir\Scripts\python.exe")) {
     New-Item -ItemType Directory -Force -Path (Split-Path $venvDir -Parent) | Out-Null
     py -3.14 -m venv $venvDir
+    # `py -3.14 -m venv` can fail (e.g. "Requested Python version (3.14) not installed")
+    # without PowerShell treating it as a terminating error -- check for real instead of
+    # trusting the exit code alone, since this is exactly the step that silently
+    # "succeeded" on a machine where step 2 should have caught the missing 3.14 first.
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$venvDir\Scripts\python.exe")) {
+        Write-Err "venv creation failed (exit code $LASTEXITCODE) -- check the error above."
+        exit 1
+    }
     Write-Ok "venv created at $venvDir"
 } else {
     Write-Ok "venv already exists at $venvDir"
