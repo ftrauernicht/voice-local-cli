@@ -110,8 +110,13 @@ if (-not (Test-Path "$venvDir\Scripts\python.exe")) {
 }
 & "$venvDir\Scripts\python.exe" -m pip install --upgrade pip --quiet
 # Dependencies live in $engineDir\pyproject.toml, not duplicated here -- see that file for
-# why each one is needed (forced alignment, VAD, etc.).
-& "$venvDir\Scripts\python.exe" -m pip install -e "$engineDir" --quiet
+# why each one is needed (forced alignment, VAD, etc.). No --quiet here on purpose: this
+# pulls in torch/transformers/pyannote.audio, which can take several minutes with no
+# visible progress at all otherwise -- confirmed live, twice, as "it just sits there, did
+# it hang?" (one person even closed the window mid-install over it). pip's own default
+# output (Collecting/Downloading/Installing lines) is the fix, not a custom progress bar.
+Write-Host "  Installing speech-recognition dependencies (torch, transformers, ...) -- this can take several minutes on a fresh install, longer on a slow connection:" -ForegroundColor DarkGray
+& "$venvDir\Scripts\python.exe" -m pip install -e "$engineDir"
 if ($LASTEXITCODE -ne 0) {
     Write-Err "pip install failed (exit code $LASTEXITCODE) -- check the error above."
     exit 1
