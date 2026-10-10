@@ -16,7 +16,7 @@
   <PropertyGroup>
     <RootNamespace>$(MSBuildProjectName)</RootNamespace>
     <AssemblyName>$(MSBuildProjectName)</AssemblyName>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Product>voice-local-cli</Product>
     <Authors>Frank Trauernicht</Authors>
   </PropertyGroup>
