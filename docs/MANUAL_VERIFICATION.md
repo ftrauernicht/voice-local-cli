@@ -301,6 +301,14 @@ a human.
     already-installed packages. Fixed by dropping `--quiet` from the main pip install (pip's
     own `Collecting`/`Downloading`/`Installing` output is the real fix, not a bespoke
     progress bar) plus an explicit "this can take several minutes" notice before it
-    starts. Not yet verified: that the real, now-visible pip output actually reads as
-    reassuring rather than alarming in a real terminal -- needs a human to watch a real
-    run, same as every other visual/UX judgment call in this app.
+    starts. **Follow-up, same day:** reported live that the *next* step, "Optional GPU
+    acceleration," now looked hung the same way once the main install stopped being
+    silent -- it was still fully suppressed (`--quiet 2>&1 | Out-Null`), its own real
+    `pip install` of `optimum-intel[openvino]`/`openvino-genai`. Fixed the same way (no
+    `--quiet`, no output redirection, plus a heads-up line that failing here is expected/
+    fine), and also dropped `--quiet` from the small `pip install --upgrade pip` call
+    just above for the same consistency reason -- every step that can meaningfully take
+    more than a couple seconds now shows pip's own real progress rather than nothing.
+    Not yet verified: that the real, now-visible pip output actually reads as reassuring
+    rather than alarming in a real terminal -- needs a human to watch a real run, same as
+    every other visual/UX judgment call in this app.
