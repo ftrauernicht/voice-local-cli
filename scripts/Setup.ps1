@@ -108,7 +108,7 @@ if (-not (Test-Path "$venvDir\Scripts\python.exe")) {
 } else {
     Write-Ok "venv already exists at $venvDir"
 }
-& "$venvDir\Scripts\python.exe" -m pip install --upgrade pip --quiet
+& "$venvDir\Scripts\python.exe" -m pip install --upgrade pip
 # Dependencies live in $engineDir\pyproject.toml, not duplicated here -- see that file for
 # why each one is needed (forced alignment, VAD, etc.). No --quiet here on purpose: this
 # pulls in torch/transformers/pyannote.audio, which can take several minutes with no
@@ -125,9 +125,13 @@ Write-Ok "packages installed/up to date"
 
 # --- 3b. Optional GPU acceleration -----------------------------------------
 # Intel GPUs only, via OpenVINO. Deliberately not fatal if this fails -- faster-whisper
-# on CPU remains the baseline on every machine, GPU is a bonus, not a requirement.
+# on CPU remains the baseline on every machine, GPU is a bonus, not a requirement. Same
+# visible-progress fix as the main install above -- this was the other step reported as
+# "looks hung" once the main one stopped being silent (it's a real pip install of its
+# own, optimum-intel[openvino]/openvino-genai, not a quick check).
 Write-Step "Optional GPU acceleration (OpenVINO, Intel GPUs only)"
-& "$venvDir\Scripts\python.exe" -m pip install -e "$engineDir[gpu]" --quiet 2>&1 | Out-Null
+Write-Host "  Failing here is fine -- it just means no GPU acceleration, transcription still runs on CPU:" -ForegroundColor DarkGray
+& "$venvDir\Scripts\python.exe" -m pip install -e "$engineDir[gpu]"
 if ($LASTEXITCODE -eq 0) {
     Write-Ok "OpenVINO packages installed -- used automatically if a matching Intel GPU is present"
 } else {
