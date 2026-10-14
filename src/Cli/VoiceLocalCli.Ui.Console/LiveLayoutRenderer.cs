@@ -19,9 +19,13 @@ internal static class LiveLayoutRenderer
 {
     internal static Layout Build(IRenderable header, IReadOnlyCollection<TranscriptEntry> recentLines, string emptyTranscriptMessage, IRenderable footer)
     {
+        // 4, not 3: room for an optional second header line (the engine's latest stderr
+        // status message, e.g. while loading a backend -- see DictationView/
+        // LiveTranscriptView's BuildHeader). A one-line header still renders fine inside
+        // the extra row; it's just top-aligned within it, not clipped.
         var layout = new Layout("Root")
             .SplitRows(
-                new Layout("Header").Size(3),
+                new Layout("Header").Size(4),
                 new Layout("Transcript"),
                 new Layout("Footer").Size(1));
 

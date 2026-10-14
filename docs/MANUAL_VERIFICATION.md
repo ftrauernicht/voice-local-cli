@@ -328,3 +328,22 @@ a human.
     over CPU and produces correct transcriptions, and whether `compute_type="float16"` is
     the right default across different NVIDIA GPU generations (older cards may need
     `int8_float16` instead -- not yet tested either way).
+21. **Dictate stuck on "Starting..." with no feedback, reported live (2026-10-14) on this
+    project's own dev machine (Intel-only, no NVIDIA GPU) running the real installed
+    `v0.1.5` copy.** Investigated directly against that exact installed venv/bundled
+    engine/configured mic device: `_cuda_backend.try_load_model()` fails fast (~1-2s, no
+    hang), the full `auto` backend chain (CUDA attempt -> OpenVINO fallback) completes in
+    ~5s, and a full `dictate.py` run against a real, separately-launched ffmpeg capture of
+    the configured mic reaches `@@STATE:{"name": "listening"}` within a few seconds too --
+    none of it reproduced an actual hang. What's real and fixed regardless: `DictationSession`/
+    `LiveTranscriptSession` only ever listened to the engine's stdout
+    (`OutputLineReceived`) for phase changes, never its stderr
+    (`ErrorLineReceived`, where `_console.py`'s `info()`/`ok()`/`warn()` go) -- so
+    whatever the engine is doing before its first `@@STATE:` event (loading a backend,
+    waiting on ffmpeg's first segment) was always a silently ticking clock, indistinguishable
+    from a real hang. Fixed by surfacing those stderr lines (ANSI codes stripped, see
+    `EngineStatusLineFormatter`) as a second header line in both the Dictate and Live TUIs.
+    Not yet confirmed: whether Frank's original report was this exact gap (plausible --
+    his machine may simply be slower than this one at the same steps) or something else
+    entirely that happened not to reproduce here; needs watching a real run on his machine
+    with the fix in place.
