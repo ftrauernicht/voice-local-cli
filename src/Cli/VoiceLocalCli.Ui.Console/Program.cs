@@ -159,6 +159,7 @@ static async Task<int> RunDictateAsync(string engineRoot, string pythonExecutabl
     var view = new DictationView();
     session.PhaseChanged += view.OnPhaseChanged;
     session.TranscriptReceived += view.OnTranscriptReceived;
+    session.EngineStatusReceived += view.OnEngineStatusReceived;
     session.UnrecognizedEngineOutput += line =>
         AnsiConsole.MarkupLine($"[yellow]Unrecognized engine output, ignored by the UI:[/] {line.EscapeMarkup()}");
 
@@ -204,6 +205,7 @@ static async Task<int> RunLiveAsync(string engineRoot, string pythonExecutable, 
     var view = new LiveTranscriptView();
     session.PhaseChanged += view.OnPhaseChanged;
     session.TranscriptReceived += view.OnTranscriptReceived;
+    session.EngineStatusReceived += view.OnEngineStatusReceived;
     session.UnrecognizedEngineOutput += line =>
         AnsiConsole.MarkupLine($"[yellow]Unrecognized engine output, ignored by the UI:[/] {line.EscapeMarkup()}");
 

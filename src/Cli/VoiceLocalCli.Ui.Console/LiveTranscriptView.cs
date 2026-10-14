@@ -30,7 +30,12 @@ internal sealed class LiveTranscriptView
     private string _phase = "starting";
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
 
+    // See DictationView's identical field for why this exists.
+    private string? _statusMessage;
+
     internal void OnPhaseChanged(string phase) => _phase = phase;
+
+    internal void OnEngineStatusReceived(string message) => _statusMessage = message;
 
     internal void OnTranscriptReceived(TranscriptEntry entry)
     {
@@ -58,8 +63,16 @@ internal sealed class LiveTranscriptView
         };
 
         TimeSpan elapsed = DateTimeOffset.Now - _startedAt;
-        var markup = new Markup($"{icon} [{color}]{label.EscapeMarkup()}[/]  [grey]{elapsed:hh\\:mm\\:ss}[/]");
-        return new Panel(markup).Header("voice-local-cli -- Live").Expand();
+        var lines = new List<IRenderable>
+        {
+            new Markup($"{icon} [{color}]{label.EscapeMarkup()}[/]  [grey]{elapsed:hh\\:mm\\:ss}[/]"),
+        };
+        if (_statusMessage is not null)
+        {
+            lines.Add(new Markup($"[grey]{_statusMessage.EscapeMarkup()}[/]"));
+        }
+
+        return new Panel(new Rows(lines)).Header("voice-local-cli -- Live").Expand();
     }
 
     private static IRenderable BuildFooter() =>

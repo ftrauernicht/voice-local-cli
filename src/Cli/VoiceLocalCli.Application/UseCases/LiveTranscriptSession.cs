@@ -53,6 +53,10 @@ public sealed class LiveTranscriptSession(
 
     public event Action<string>? UnrecognizedEngineOutput;
 
+    /// <summary>Raised for the engine's own stderr prose, ANSI codes stripped -- see
+    /// <see cref="DictationSession.EngineStatusReceived"/> for why.</summary>
+    public event Action<string>? EngineStatusReceived;
+
     /// <summary>Starts capture and live transcription. Returns the transcript file path
     /// the engine writes to.</summary>
     public string Start(LiveTranscriptSettings settings, Func<DateTimeOffset>? clock = null)
@@ -73,6 +77,7 @@ public sealed class LiveTranscriptSession(
         IReadOnlyList<string> engineArgs = LiveEngineArguments.For(_engineScriptPath, audioPath, settings, outPath);
         _engine = _launcher.Start(_pythonPath, engineArgs);
         _engine.OutputLineReceived += HandleEngineOutputLine;
+        _engine.ErrorLineReceived += HandleEngineErrorLine;
 
         return outPath;
     }
@@ -111,6 +116,15 @@ public sealed class LiveTranscriptSession(
             case UnrecognizedEngineLine unrecognized:
                 UnrecognizedEngineOutput?.Invoke(unrecognized.RawLine);
                 break;
+        }
+    }
+
+    private void HandleEngineErrorLine(string rawLine)
+    {
+        string? status = EngineStatusLineFormatter.Format(rawLine);
+        if (status is not null)
+        {
+            EngineStatusReceived?.Invoke(status);
         }
     }
 }

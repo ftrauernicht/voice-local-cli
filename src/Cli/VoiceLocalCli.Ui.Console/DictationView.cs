@@ -41,7 +41,17 @@ internal sealed class DictationView
     private DictationPhase _phase = DictationPhase.Unknown;
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
 
+    // The engine's latest stderr status line (e.g. "Loading GPU pipeline (OpenVINO,
+    // large-v3-turbo) ..."), shown under the phase while there's one to show -- otherwise
+    // the "Starting..." phase is a silently ticking clock, indistinguishable from a real
+    // hang (reported live on 2026-10-14). Kept around rather than cleared on the first
+    // transcript-ready state: still useful context once e.g. a focus-mismatch warning
+    // comes through later in the session.
+    private string? _statusMessage;
+
     internal void OnPhaseChanged(DictationPhase phase) => _phase = phase;
+
+    internal void OnEngineStatusReceived(string message) => _statusMessage = message;
 
     internal void OnTranscriptReceived(TranscriptEntry entry)
     {
@@ -74,8 +84,16 @@ internal sealed class DictationView
         };
 
         TimeSpan elapsed = DateTimeOffset.Now - _startedAt;
-        var markup = new Markup($"{icon} [{color}]{label.EscapeMarkup()}[/]  [grey]{elapsed:hh\\:mm\\:ss}[/]");
-        return new Panel(markup).Header("voice-local-cli -- Dictate").Expand();
+        var lines = new List<IRenderable>
+        {
+            new Markup($"{icon} [{color}]{label.EscapeMarkup()}[/]  [grey]{elapsed:hh\\:mm\\:ss}[/]"),
+        };
+        if (_statusMessage is not null)
+        {
+            lines.Add(new Markup($"[grey]{_statusMessage.EscapeMarkup()}[/]"));
+        }
+
+        return new Panel(new Rows(lines)).Header("voice-local-cli -- Dictate").Expand();
     }
 
     private static IRenderable BuildFooter() =>

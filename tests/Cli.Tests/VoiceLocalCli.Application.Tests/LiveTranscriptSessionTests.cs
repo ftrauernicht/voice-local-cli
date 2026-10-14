@@ -75,6 +75,23 @@ public sealed class LiveTranscriptSessionTests
     }
 
     [Fact]
+    public void StderrLineFromEngineRaisesEngineStatusReceivedWithAnsiCodesStripped()
+    {
+        var launcher = new FakeProcessLauncher();
+        launcher.EnqueueProcess(new FakeChildProcess());
+        var engine = new FakeChildProcess();
+        launcher.EnqueueProcess(engine);
+        var session = CreateSession(launcher);
+        string? observedStatus = null;
+        session.EngineStatusReceived += status => observedStatus = status;
+
+        session.Start(new LiveTranscriptSettings(Microphone: "Mic"));
+        engine.EmitErrorLine("\u001b[96mLoading GPU pipeline (OpenVINO, large-v3-turbo) ...\u001b[0m");
+
+        Assert.Equal("Loading GPU pipeline (OpenVINO, large-v3-turbo) ...", observedStatus);
+    }
+
+    [Fact]
     public async Task StopWritesQToFfmpegStandardInput()
     {
         var launcher = new FakeProcessLauncher();

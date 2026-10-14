@@ -88,6 +88,40 @@ public sealed class DictationSessionTests
     }
 
     [Fact]
+    public void StderrLineFromEngineRaisesEngineStatusReceivedWithAnsiCodesStripped()
+    {
+        var launcher = new FakeProcessLauncher();
+        launcher.EnqueueProcess(new FakeChildProcess());
+        var engine = new FakeChildProcess();
+        launcher.EnqueueProcess(engine);
+        var session = CreateSession(launcher);
+        string? observedStatus = null;
+        session.EngineStatusReceived += status => observedStatus = status;
+
+        session.Start(new DictationSettings(Microphone: "Mic"));
+        engine.EmitErrorLine("\u001b[96mLoading GPU pipeline (OpenVINO, large-v3-turbo) ...\u001b[0m");
+
+        Assert.Equal("Loading GPU pipeline (OpenVINO, large-v3-turbo) ...", observedStatus);
+    }
+
+    [Fact]
+    public void BlankStderrLineFromEngineDoesNotRaiseEngineStatusReceived()
+    {
+        var launcher = new FakeProcessLauncher();
+        launcher.EnqueueProcess(new FakeChildProcess());
+        var engine = new FakeChildProcess();
+        launcher.EnqueueProcess(engine);
+        var session = CreateSession(launcher);
+        bool raised = false;
+        session.EngineStatusReceived += _ => raised = true;
+
+        session.Start(new DictationSettings(Microphone: "Mic"));
+        engine.EmitErrorLine("   ");
+
+        Assert.False(raised);
+    }
+
+    [Fact]
     public void UnparseableStateLineRaisesUnrecognizedEngineOutputNotTranscript()
     {
         var launcher = new FakeProcessLauncher();

@@ -46,6 +46,13 @@ public sealed class DictationSession(
     /// <see cref="UnrecognizedEngineLine"/>).</summary>
     public event Action<string>? UnrecognizedEngineOutput;
 
+    /// <summary>Raised for the engine's own stderr prose (src/engine/_console.py's
+    /// info()/ok()/warn()/err() calls, e.g. "Loading GPU pipeline (OpenVINO,
+    /// large-v3-turbo) ..."), ANSI codes stripped. Lets the UI show what's happening before
+    /// the first @@STATE: event arrives on stdout -- otherwise indistinguishable from a
+    /// hang during backend loading (see <see cref="EngineStatusLineFormatter"/>).</summary>
+    public event Action<string>? EngineStatusReceived;
+
     /// <summary>Starts capture and transcription. Returns the log file path the engine
     /// writes the session's transcript to.</summary>
     public string Start(DictationSettings settings, Func<DateTimeOffset>? clock = null)
@@ -70,6 +77,7 @@ public sealed class DictationSession(
         IReadOnlyList<string> engineArgs = DictateEngineArguments.For(_engineScriptPath, segmentPrefix, settings, logPath);
         _engine = _launcher.Start(_pythonPath, engineArgs);
         _engine.OutputLineReceived += HandleEngineOutputLine;
+        _engine.ErrorLineReceived += HandleEngineErrorLine;
 
         return logPath;
     }
@@ -114,6 +122,15 @@ public sealed class DictationSession(
             case UnrecognizedEngineLine unrecognized:
                 UnrecognizedEngineOutput?.Invoke(unrecognized.RawLine);
                 break;
+        }
+    }
+
+    private void HandleEngineErrorLine(string rawLine)
+    {
+        string? status = EngineStatusLineFormatter.Format(rawLine);
+        if (status is not null)
+        {
+            EngineStatusReceived?.Invoke(status);
         }
     }
 }
