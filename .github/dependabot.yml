@@ -1,0 +1,32 @@
+# Patch and minor updates travel as one grouped pull request per ecosystem instead of
+# one each. A major belongs to no group and arrives on its own, because that is where
+# behaviour changes rather than just the version number.
+#
+# This repository does not auto-merge them. Its rulesets ask for an approving review and
+# a code owner on every pull request, and that is a decision worth keeping; grouping
+# alone takes the count down far enough.
+#
+# Without this file the actions in the workflows drift silently: a pinned major keeps
+# working for years while the Node runtime under it is deprecated, and the only sign is
+# a warning on a run that passes.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      safe:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      safe:
+        update-types: ["minor", "patch"]
