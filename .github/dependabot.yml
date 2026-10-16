@@ -2,9 +2,9 @@
 # one each. A major belongs to no group and arrives on its own, because that is where
 # behaviour changes rather than just the version number.
 #
-# This repository does not auto-merge them. Its rulesets ask for an approving review and
-# a code owner on every pull request, and that is a decision worth keeping; grouping
-# alone takes the count down far enough.
+# .github/workflows/dependabot-auto-merge.yml then merges that group once every check
+# on the commit is green. The ruleset on main still asks for a pull request and for all
+# seven checks to pass; what it no longer asks for is a human to approve a patch bump.
 #
 # Without this file the actions in the workflows drift silently: a pinned major keeps
 # working for years while the Node runtime under it is deprecated, and the only sign is
