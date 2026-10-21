@@ -124,19 +124,56 @@ public sealed class CallRecordingSessionTests
     }
 
     [Fact]
-    public async Task StopAndTranscribeKillsTranscriptionIfItDoesNotFinishInTime()
+    public async Task StopAndTranscribeReturnsNullWhenTheEngineExitsWithoutFinishing()
     {
         var launcher = new FakeProcessLauncher();
         launcher.EnqueueProcess(new FakeChildProcess());
-        var transcription = new FakeChildProcess { ExitsWithinTimeout = false };
+        var transcription = new FakeChildProcess(); // exits, but emits no "finished" event
         launcher.EnqueueProcess(transcription);
         var session = CreateSession(launcher);
         session.StartRecording(new CallRecordingSettings(Microphone: "Mic"));
 
         string? outputPath = await session.StopAndTranscribeAsync(hfToken: null, TestContext.Current.CancellationToken);
 
-        Assert.True(transcription.WasKilled);
         Assert.Null(outputPath);
+        // No wall-clock cap: a slow engine is waited out, never killed for running long.
+        Assert.False(transcription.WasKilled);
+    }
+
+    [Fact]
+    public async Task StopAndTranscribeKillsTheEngineWhenCancelled()
+    {
+        var launcher = new FakeProcessLauncher();
+        launcher.EnqueueProcess(new FakeChildProcess());
+        var transcription = new FakeChildProcess();
+        launcher.EnqueueProcess(transcription);
+        var session = CreateSession(launcher);
+        session.StartRecording(new CallRecordingSettings(Microphone: "Mic"));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => session.StopAndTranscribeAsync(hfToken: null, cancelled.Token));
+
+        Assert.True(transcription.WasKilled);
+    }
+
+    [Fact]
+    public async Task StopAndTranscribeSurfacesTheEnginesStderrProseWithAnsiCodesStripped()
+    {
+        var launcher = new FakeProcessLauncher();
+        launcher.EnqueueProcess(new FakeChildProcess());
+        var transcription = new FakeChildProcess();
+        transcription.ErrorLinesToEmitBeforeExit.Add("\u001b[96mRunning speaker diarization ...\u001b[0m");
+        launcher.EnqueueProcess(transcription);
+        var session = CreateSession(launcher);
+        List<string> engineStatus = [];
+        session.EngineStatusReceived += status => engineStatus.Add(status);
+        session.StartRecording(new CallRecordingSettings(Microphone: "Mic"));
+
+        await session.StopAndTranscribeAsync(hfToken: null, TestContext.Current.CancellationToken);
+
+        Assert.Contains("Running speaker diarization ...", engineStatus);
     }
 
     [Fact]

@@ -347,3 +347,26 @@ a human.
     his machine may simply be slower than this one at the same steps) or something else
     entirely that happened not to reproduce here; needs watching a real run on his machine
     with the fix in place.
+22. **Call-mode transcription had a hard 20-minute cap and swallowed the engine's stderr,
+    reported live (2026-10-21) on a real >1h call: it showed only the status spinner, then
+    "Transcription did not finish in time or failed" with no transcript.** Two real problems,
+    both fixed here. First, `CallRecordingSession` killed `transcribe.py` after a fixed
+    `TranscriptionTimeout` of 20 minutes; a long call's transcription (Whisper plus, with an
+    `HF_TOKEN` set, pyannote diarization on CPU) legitimately runs far longer the longer the
+    call was, so the cap killed the pass mid-run and discarded the result before the
+    `finished` event was ever emitted. The cap is removed entirely: Call is a batch job that
+    now runs to completion (`ChildProcessStopSequence.WaitUntilExitOrKillOnCancelAsync`),
+    with the user's window-close/hard-kill (`ConsoleCtrlHandler` + the Job Object) still the
+    way it ends early. Second, same gap as item 21 but for the one TUI that item never
+    touched: Call subscribed only to the engine's stdout (`OutputLineReceived`), never its
+    stderr, so the long transcription/diarization pass was a silent spinner and a real crash
+    (the "or failed" half of the old message) was invisible. Call now surfaces the engine's
+    stderr prose live (`EngineStatusReceived`, ANSI stripped via `EngineStatusLineFormatter`,
+    same as Dictate/Live), and the final message no longer claims a timeout. Verified this
+    session: `dotnet build`/`dotnet test` (94 tests, 97%+ line coverage on the hexagonal
+    core), `dotnet format --verify-no-changes` clean. **Not verified: an actual long call.**
+    Needs a human to run Call mode against a real recording of 20+ minutes (ideally the 1h+
+    one that triggered this, still on disk) and confirm it transcribes all the way to the
+    `.txt` instead of being cut off, and that the spinner shows the engine's own progress
+    lines (e.g. "Running speaker diarization ...") during the pass rather than a frozen
+    label.

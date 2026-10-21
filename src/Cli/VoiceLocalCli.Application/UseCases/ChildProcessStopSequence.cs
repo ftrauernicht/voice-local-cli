@@ -45,4 +45,33 @@ internal static class ChildProcessStopSequence
             process.Kill();
         }
     }
+
+    /// <summary>Waits for a batch-job process to exit with no timeout of its own: Call-mode
+    /// transcription's runtime scales with the recording length, so a fixed wall-clock cap
+    /// would kill a long call's transcription mid-pass and discard the result (reported live
+    /// on 2026-10-21, a >1h call that tripped the old 20-minute cap). Cancellation -- a
+    /// closing window -- still ends the wait and kills the process; the Win32 Job Object
+    /// remains the backstop if even that grace period is cut short.</summary>
+    internal static async Task WaitUntilExitOrKillOnCancelAsync(
+        IChildProcess process, CancellationToken cancellationToken)
+    {
+        if (process.HasExited)
+        {
+            return;
+        }
+
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                process.Kill();
+            }
+
+            throw;
+        }
+    }
 }

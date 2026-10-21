@@ -21,10 +21,15 @@ internal sealed class FakeChildProcess : IChildProcess
     /// <summary>Lines to emit via <see cref="OutputLineReceived"/> right before reporting
     /// as exited, simulating a real process (like transcribe.py) that prints a final
     /// status line and then exits almost immediately after -- without this, a test waiting
-    /// on <see cref="WaitForExitAsync"/> for a process whose exit carries meaning (e.g. its
+    /// on <see cref="WaitForExitAsync(TimeSpan, CancellationToken)"/> for a process whose exit carries meaning (e.g. its
     /// last <c>@@STATE:</c> event) would have no way to inject that line at the right
     /// moment, since the fake's exit is already-synchronously-completed.</summary>
     public List<string> OutputLinesToEmitBeforeExit { get; } = [];
+
+    /// <summary>Lines to emit via <see cref="ErrorLineReceived"/> right before reporting as
+    /// exited -- the stderr counterpart of <see cref="OutputLinesToEmitBeforeExit"/>, for
+    /// exercising a session's engine-stderr handling (e.g. Call-mode progress/error prose).</summary>
+    public List<string> ErrorLinesToEmitBeforeExit { get; } = [];
 
     public int Id => 4242;
 
@@ -42,15 +47,39 @@ internal sealed class FakeChildProcess : IChildProcess
     {
         if (ExitsWithinTimeout)
         {
-            foreach (string line in OutputLinesToEmitBeforeExit)
-            {
-                OutputLineReceived?.Invoke(line);
-            }
-
+            EmitPreExitLines();
             HasExited = true;
         }
 
         return Task.FromResult(ExitsWithinTimeout);
+    }
+
+    // The unbounded wait (Call-mode transcription): models a batch job that always runs to
+    // completion, emitting its final lines and then exiting. Cancellation is the only early
+    // exit, surfaced as a cancelled task so the stop sequence's kill-on-cancel path runs.
+    public Task WaitForExitAsync(CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled(cancellationToken);
+        }
+
+        EmitPreExitLines();
+        HasExited = true;
+        return Task.CompletedTask;
+    }
+
+    private void EmitPreExitLines()
+    {
+        foreach (string line in OutputLinesToEmitBeforeExit)
+        {
+            OutputLineReceived?.Invoke(line);
+        }
+
+        foreach (string line in ErrorLinesToEmitBeforeExit)
+        {
+            ErrorLineReceived?.Invoke(line);
+        }
     }
 
     public void Kill()

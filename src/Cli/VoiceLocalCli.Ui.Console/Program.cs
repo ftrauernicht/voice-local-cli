@@ -310,6 +310,10 @@ static async Task<int> RunCallAsync(string engineRoot, string scriptsRoot, strin
             "finished" => "Finishing up...",
             _ => phase,
         });
+        // The engine's own stderr prose is more specific than the coarse phase labels and,
+        // for a long call, is the only sign it's still working rather than hung -- show the
+        // latest line as the live status.
+        session.EngineStatusReceived += status => ctx.Status(status.EscapeMarkup());
         transcriptOutputPath = await session.StopAndTranscribeAsync(hfToken, cancellation.Token).ConfigureAwait(false);
     }).ConfigureAwait(false);
 
@@ -319,7 +323,7 @@ static async Task<int> RunCallAsync(string engineRoot, string scriptsRoot, strin
     }
     else
     {
-        AnsiConsole.MarkupLine("\n[yellow]Transcription did not finish in time or failed -- the recording is still on disk; check it directly.[/]");
+        AnsiConsole.MarkupLine("\n[yellow]Transcription did not finish -- the engine exited before writing a transcript (see its output above). The recording is still on disk; you can run transcribe.py against it directly.[/]");
     }
 
     return 0;
