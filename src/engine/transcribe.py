@@ -221,8 +221,15 @@ def main() -> None:
         c.info(f"Transcribing {args.audio.name} via GPU (CUDA, {args.model}) ...")
         segments, words = transcribe_with_model(cuda_model, args.audio, args.language, hotwords)
     elif use_openvino:
-        c.info(f"Transcribing {args.audio.name} via GPU (OpenVINO) + Forced Alignment ...")
-        segments, words = transcribe_gpu(args.audio, args.language, hotwords)
+        try:
+            c.info(f"Transcribing {args.audio.name} via GPU (OpenVINO) + Forced Alignment ...")
+            segments, words = transcribe_gpu(args.audio, args.language, hotwords)
+        except Exception as exc:
+            # A present-but-corrupt model throws inside load_pipeline, after ensure_model
+            # already passed -- fall back to CPU rather than losing the whole transcription.
+            c.warn(f"GPU transcription failed, falling back to CPU: {exc}")
+            c.info(f"Transcribing {args.audio.name} with model {args.model} (CPU) ...")
+            segments, words = transcribe(args.audio, args.model, args.language, hotwords)
     else:
         c.info(f"Transcribing {args.audio.name} with model {args.model} (CPU) ...")
         segments, words = transcribe(args.audio, args.model, args.language, hotwords)

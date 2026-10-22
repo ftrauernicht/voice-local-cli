@@ -89,10 +89,16 @@ def load_backend(requested: str, language: str, hotwords: str = ""):
         c.warn("GPU backend requested but not available -- falling back to CPU.")
 
     if use_openvino:
-        c.info("Loading GPU pipeline (OpenVINO, large-v3-turbo) ...")
-        pipeline = ov.load_pipeline()
-        c.ok("GPU pipeline ready.")
-        return lambda samples: ov.transcribe_chunk(pipeline, samples, language, hotwords)
+        try:
+            c.info("Loading GPU pipeline (OpenVINO, large-v3-turbo) ...")
+            pipeline = ov.load_pipeline()
+            c.ok("GPU pipeline ready.")
+            return lambda samples: ov.transcribe_chunk(pipeline, samples, language, hotwords)
+        except Exception as exc:
+            # A model that is present but corrupt/incomplete throws here, after ensure_model
+            # already said yes -- fall back to CPU instead of crashing the whole session (this
+            # module's docstring promises exactly that automatic, unobtrusive fallback).
+            c.warn(f"GPU pipeline failed to load, falling back to CPU: {exc}")
 
     c.info(f"Loading CPU model ({model_name}) ...")
     from faster_whisper import WhisperModel

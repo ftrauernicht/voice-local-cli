@@ -388,3 +388,27 @@ a human.
     (`Program.cs`, the composition root, excluded from coverage by design) and need a human
     on a real install. The natural first run is recovering the two `call_2026-10-21_*.wav`
     files above.
+
+24. **OpenVINO Live/Call startup failed with "Empty weights data in bin file or bin file
+    cannot be found!" on this machine (2026-10-22), stuck on "Starting..." instead of
+    transcribing.** The ~800 MB GPU model is downloaded on first use, not bundled. The v0.1.8
+    update (Velopack replaces the whole install folder) wiped the previously downloaded copy,
+    and the fresh download was interrupted after the small tokenizer `.bin` but before the
+    172/645 MB `encoder`/`decoder` weights. `ensure_model` only checked for *any* `.bin`, so it
+    treated the half-download as complete; `load_pipeline` had no fallback, so the engine
+    crashed instead of using CPU. Fixed three ways: (a) in an installed copy the model now
+    lives at `%LOCALAPPDATA%\voice-local-cli\engine\ov-models` (beside the venv, outside the
+    Velopack-managed folder), so an update no longer wipes it and forces a re-download --
+    mirrors `RepositoryLayout.EngineVenvRoot`; a dev checkout keeps it in `src/engine/ov-models`
+    unchanged. (b) `ensure_model` now requires both actual weight files, each above a 1 MB
+    floor, and re-downloads the missing ones when they aren't there, so an interrupted attempt
+    repairs itself instead of staying broken forever. (c) `load_backend` (Live/Dictate) and
+    `transcribe.py`'s main (Call) catch a load failure and fall back to CPU with a warning,
+    honoring the docstring's promise. Covered by engine tests (`_resolve_model_dir` dev/installed
+    split, `_model_is_complete`, the re-download and incomplete-download paths, both
+    CPU-fallback paths); 142 tests, 88% coverage, `ruff check`/`ruff format` clean. **Not
+    verifiable by CI:** the real Intel-GPU path can't run on a hosted runner. The immediate
+    unblock on this machine was copying the two missing weight files into the v0.1.8 install by
+    hand; the stable-location move still needs a human on a real GPU run after updating to the
+    fixed build -- confirm Live/Call loads the GPU pipeline and reaches "recording", and that a
+    later app update no longer triggers a re-download.

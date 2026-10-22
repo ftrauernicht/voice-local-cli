@@ -346,6 +346,35 @@ class TestMain:
         assert gpu_called == [1]
         assert cpu_called == []
 
+    def test_gpu_failure_falls_back_to_cpu(self, tmp_path, monkeypatch, capsys):
+        # OpenVINO was selected (ensure_model passed), but loading the model throws -- the CPU
+        # path must still produce and write a transcript (regression test for the "Empty
+        # weights data in bin file" crash).
+        audio = tmp_path / "call.wav"
+        _write_wav(audio, [0] * 16000)
+        monkeypatch.setattr(sys, "argv", ["transcribe.py", str(audio), "--no-diarization"])
+        monkeypatch.setattr(t.cu, "try_load_model", lambda model_size: None)
+        monkeypatch.setattr(t.al, "is_supported", lambda lang: True)
+        monkeypatch.setattr(t.ov, "is_available", lambda: True)
+        monkeypatch.setattr(t.ov, "ensure_model", lambda: True)
+        monkeypatch.setattr(t._hotwords, "load_hotword_string", lambda: "")
+
+        def boom(path, language, hotwords=""):
+            raise RuntimeError("Empty weights data in bin file")
+
+        monkeypatch.setattr(t, "transcribe_gpu", boom)
+        cpu_called = []
+        monkeypatch.setattr(
+            t, "transcribe",
+            lambda *a, **k: (cpu_called.append(1) or ([{"start": 0.0, "end": 1.0, "text": "cpu text"}], [])),
+        )
+
+        t.main()
+
+        assert cpu_called == [1]
+        assert "falling back to CPU" in capsys.readouterr().err
+        assert "cpu text" in audio.with_suffix(".txt").read_text(encoding="utf-8")
+
     def test_cpu_path_selected_when_neither_gpu_works(self, tmp_path, monkeypatch):
         audio = tmp_path / "call.wav"
         _write_wav(audio, [0] * 16000)
