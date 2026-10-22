@@ -1,5 +1,6 @@
 """Tests for _openvino_backend.py's chunking/silence-skip logic and hotwords threading,
 using a fake pipeline object -- never loads the real ~800 MB model or touches a GPU."""
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -156,23 +157,87 @@ class TestIsAvailable:
         assert ov.is_available() is False
 
 
-class TestEnsureModel:
-    def test_true_when_model_already_present(self, tmp_path, monkeypatch):
-        model_dir = tmp_path / "whisper-large-v3-turbo"
+def _write_complete_model(model_dir):
+    """A model folder that passes _model_is_complete: both required weight files, each at
+    least _MIN_WEIGHT_BYTES."""
+    model_dir.mkdir(parents=True, exist_ok=True)
+    for name in ov._REQUIRED_WEIGHT_FILES:
+        (model_dir / name).write_bytes(b"\0" * ov._MIN_WEIGHT_BYTES)
+
+
+class TestModelIsComplete:
+    def test_true_when_both_weight_files_present_and_sized(self, tmp_path):
+        _write_complete_model(tmp_path / "m")
+        assert ov._model_is_complete(tmp_path / "m") is True
+
+    def test_false_when_a_weight_file_is_missing(self, tmp_path):
+        model_dir = tmp_path / "m"
         model_dir.mkdir()
-        (model_dir / "model.bin").write_bytes(b"fake")
+        (model_dir / ov._REQUIRED_WEIGHT_FILES[0]).write_bytes(b"\0" * ov._MIN_WEIGHT_BYTES)
+        # decoder .bin absent -- the half-download case
+        assert ov._model_is_complete(model_dir) is False
+
+    def test_false_when_a_weight_file_is_a_truncated_stub(self, tmp_path):
+        model_dir = tmp_path / "m"
+        model_dir.mkdir()
+        for name in ov._REQUIRED_WEIGHT_FILES:
+            (model_dir / name).write_bytes(b"\0" * 10)  # present but far below the floor
+        assert ov._model_is_complete(model_dir) is False
+
+    def test_false_when_only_small_tokenizer_bin_is_present(self, tmp_path):
+        # The exact failure mode: the small tokenizer/detokenizer .bin arrived, the big
+        # encoder/decoder weights did not. The old 'any *.bin' check wrongly passed here.
+        model_dir = tmp_path / "m"
+        model_dir.mkdir()
+        (model_dir / "openvino_tokenizer.bin").write_bytes(b"\0" * ov._MIN_WEIGHT_BYTES)
+        assert ov._model_is_complete(model_dir) is False
+
+
+class TestEnsureModel:
+    def test_true_when_model_already_complete(self, tmp_path, monkeypatch):
+        model_dir = tmp_path / "whisper-large-v3-turbo"
+        _write_complete_model(model_dir)
         monkeypatch.setattr(ov, "MODEL_DIR", model_dir)
-        assert ov.ensure_model() is True
+        with patch("huggingface_hub.snapshot_download") as fake_download:
+            assert ov.ensure_model() is True
+        fake_download.assert_not_called()  # already complete, no re-download
 
     def test_downloads_when_not_present(self, tmp_path, monkeypatch):
         model_dir = tmp_path / "whisper-large-v3-turbo"  # does not exist yet
         monkeypatch.setattr(ov, "MODEL_DIR", model_dir)
-        fake_download = MagicMock()
-        with patch("huggingface_hub.snapshot_download", fake_download):
+
+        def fake_download(*_a, **kwargs):
+            _write_complete_model(Path(kwargs["local_dir"]))
+
+        with patch("huggingface_hub.snapshot_download", side_effect=fake_download) as mock_download:
             assert ov.ensure_model() is True
-        fake_download.assert_called_once()
-        _, kwargs = fake_download.call_args
+        mock_download.assert_called_once()
+        _, kwargs = mock_download.call_args
         assert kwargs["local_dir"] == str(model_dir)
+
+    def test_redownloads_when_model_is_incomplete(self, tmp_path, monkeypatch):
+        # A prior interrupted download left only the small tokenizer .bin behind. ensure_model
+        # must NOT treat that as done -- it re-downloads (which fills the missing weights).
+        model_dir = tmp_path / "whisper-large-v3-turbo"
+        model_dir.mkdir()
+        (model_dir / "openvino_tokenizer.bin").write_bytes(b"\0" * ov._MIN_WEIGHT_BYTES)
+        monkeypatch.setattr(ov, "MODEL_DIR", model_dir)
+
+        def fake_download(*_a, **kwargs):
+            _write_complete_model(Path(kwargs["local_dir"]))
+
+        with patch("huggingface_hub.snapshot_download", side_effect=fake_download) as mock_download:
+            assert ov.ensure_model() is True
+        mock_download.assert_called_once()
+
+    def test_false_and_warns_when_download_leaves_model_incomplete(self, tmp_path, monkeypatch, capsys):
+        # Download "succeeds" (no exception) but the weights still aren't there -- must report
+        # False, not lie with True the way the old code did.
+        model_dir = tmp_path / "whisper-large-v3-turbo"
+        monkeypatch.setattr(ov, "MODEL_DIR", model_dir)
+        with patch("huggingface_hub.snapshot_download"):  # does nothing, writes no files
+            assert ov.ensure_model() is False
+        assert "missing or incomplete" in capsys.readouterr().err
 
     def test_false_and_warns_when_download_fails(self, tmp_path, monkeypatch, capsys):
         model_dir = tmp_path / "whisper-large-v3-turbo"
@@ -180,3 +245,28 @@ class TestEnsureModel:
         with patch("huggingface_hub.snapshot_download", side_effect=RuntimeError("network down")):
             assert ov.ensure_model() is False
         assert "falling back to CPU" in capsys.readouterr().err
+
+
+class TestResolveModelDir:
+    def test_uses_checkout_when_slnx_present(self, tmp_path):
+        repo = tmp_path / "repo"
+        engine = repo / "src" / "engine"
+        engine.mkdir(parents=True)
+        (repo / "VoiceLocalCli.slnx").write_text("")
+        result = ov._resolve_model_dir(engine, "C:/ignored/AppData/Local")
+        assert result == engine / "ov-models" / "whisper-large-v3-turbo"
+
+    def test_uses_localappdata_when_no_slnx(self, tmp_path):
+        # No VoiceLocalCli.slnx above this folder (tmp_path lives under the system temp dir,
+        # not the repo) -- the installed-app case.
+        engine = tmp_path / "install" / "current" / "engine"
+        engine.mkdir(parents=True)
+        appdata = tmp_path / "AppData" / "Local"
+        result = ov._resolve_model_dir(engine, str(appdata))
+        assert result == appdata / "voice-local-cli" / "engine" / "ov-models" / "whisper-large-v3-turbo"
+
+    def test_falls_back_to_home_appdata_when_localappdata_unset(self, tmp_path):
+        engine = tmp_path / "install" / "engine"
+        engine.mkdir(parents=True)
+        result = ov._resolve_model_dir(engine, None)
+        assert result.parts[-4:] == ("voice-local-cli", "engine", "ov-models", "whisper-large-v3-turbo")

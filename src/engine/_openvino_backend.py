@@ -9,6 +9,7 @@ transcribe_chunk). For Call mode, transcribe.py recovers word timestamps afterwa
 Forced Alignment per segment -- see _align_backend.py and README.md, "Model choice".
 """
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +17,34 @@ import numpy as np
 import _console as c
 
 MODEL_ID = "OpenVINO/whisper-large-v3-turbo-int8-ov"
-MODEL_DIR = Path(__file__).parent / "ov-models" / "whisper-large-v3-turbo"
+
+# The two weight files WhisperPipeline actually needs. Their .xml topology siblings reference
+# them by name, so a model folder that has the .xml but not these .bin fails to load with
+# "Empty weights data in bin file or bin file cannot be found!" -- exactly what an interrupted
+# download leaves behind (the small tokenizer .bin arrive first, these big ones last). The old
+# presence check (any *.bin) was satisfied by the tokenizer files alone, so it treated such a
+# half-download as a complete model forever and never re-fetched the real weights.
+_REQUIRED_WEIGHT_FILES = ("openvino_encoder_model.bin", "openvino_decoder_model.bin")
+# The real encoder/decoder are 172-645 MB; this floor only rules out a 0-byte or truncated
+# stub, never a genuine file.
+_MIN_WEIGHT_BYTES = 1_000_000
+
+
+def _resolve_model_dir(engine_dir: Path, local_appdata: str | None) -> Path:
+    """Where the ~800 MB model is cached. In a source checkout it stays inside the engine
+    folder (next to the .venv), unchanged. In an installed copy it goes to a stable per-user
+    location instead, because Velopack replaces the whole install folder on every app update --
+    a model living under it would be wiped and re-downloaded each time, which is how the
+    interrupted-download failures happened. Mirrors RepositoryLayout.EngineVenvRoot on the
+    .NET side, and recognizes a checkout by the same VoiceLocalCli.slnx marker it uses."""
+    subdir = Path("ov-models") / "whisper-large-v3-turbo"
+    if any((parent / "VoiceLocalCli.slnx").exists() for parent in (engine_dir, *engine_dir.parents)):
+        return engine_dir / subdir
+    base = local_appdata or str(Path.home() / "AppData" / "Local")
+    return Path(base) / "voice-local-cli" / "engine" / subdir
+
+
+MODEL_DIR = _resolve_model_dir(Path(__file__).resolve().parent, os.environ.get("LOCALAPPDATA"))
 
 
 def is_available() -> bool:
@@ -33,20 +61,36 @@ def is_available() -> bool:
         return False
 
 
+def _model_is_complete(model_dir: Path) -> bool:
+    """True only if both actual weight files exist and are non-trivially sized -- not merely
+    'some .bin is present' (see _REQUIRED_WEIGHT_FILES)."""
+    return all(
+        (model_dir / name).is_file() and (model_dir / name).stat().st_size >= _MIN_WEIGHT_BYTES
+        for name in _REQUIRED_WEIGHT_FILES
+    )
+
+
 def ensure_model() -> bool:
-    """Downloads the pre-converted model once (~800 MB) if it isn't present locally yet.
-    Returns False if the download fails -- the CPU fallback then takes over."""
-    if MODEL_DIR.exists() and any(MODEL_DIR.glob("*.bin")):
+    """Downloads the pre-converted model once (~800 MB) if its weight files aren't present and
+    complete yet. A half-finished earlier attempt repairs itself: snapshot_download fills in
+    only the missing files, instead of the old behavior where any leftover .bin made the model
+    look complete forever. Returns False if it still isn't complete afterward -- the CPU
+    fallback then takes over."""
+    if _model_is_complete(MODEL_DIR):
         return True
     try:
         from huggingface_hub import snapshot_download
 
         c.info(f"Downloading the GPU model once (~800 MB): {MODEL_ID} ...")
         snapshot_download(MODEL_ID, local_dir=str(MODEL_DIR))
-        return True
     except Exception as exc:
         c.warn(f"GPU model download failed, falling back to CPU: {exc}")
         return False
+
+    if _model_is_complete(MODEL_DIR):
+        return True
+    c.warn("GPU model download finished but its weight files are missing or incomplete -- falling back to CPU.")
+    return False
 
 
 def load_pipeline():

@@ -155,6 +155,24 @@ class TestLoadBackendBranching:
             mock_ov.load_pipeline.assert_not_called()
             mock_model_cls.assert_called_once()
 
+    def test_auto_falls_back_to_cpu_when_openvino_pipeline_load_raises(self, capsys):
+        # ensure_model passed, but the model on disk is corrupt/incomplete, so load_pipeline
+        # throws -- the session must degrade to CPU, not crash (regression test for the
+        # "Empty weights data in bin file" failure).
+        with patch("transcribe_live.ov") as mock_ov, \
+             patch("transcribe_live.cu") as mock_cu, \
+             patch("faster_whisper.WhisperModel") as mock_model_cls:
+            mock_cu.try_load_model.return_value = None
+            mock_ov.is_available.return_value = True
+            mock_ov.ensure_model.return_value = True
+            mock_ov.load_pipeline.side_effect = RuntimeError("Empty weights data in bin file")
+            mock_model_cls.return_value = MagicMock()
+
+            tl.load_backend("auto", "de")
+
+            assert "falling back to CPU" in capsys.readouterr().err
+            mock_model_cls.assert_called_once()
+
     def test_hotwords_passed_through_on_cpu_path(self):
         with patch("transcribe_live.ov") as mock_ov, \
              patch("transcribe_live.cu") as mock_cu, \
