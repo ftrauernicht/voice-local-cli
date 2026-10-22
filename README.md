@@ -92,6 +92,12 @@ Every launch starts with a short environment check -- Python, ffmpeg, configured
 devices, and the Hugging Face token -- so a missing piece shows up before you pick a
 mode, not partway through a session.
 
+The menu also has a **"Re-transcribe a recording"** option: it lists the `*.wav` files in
+your recordings folder (newest first, marked with whether a transcript already exists) and
+runs the full Call-mode transcription against the one you pick, without recording anything
+new. Use it to produce a transcript for a call that was recorded but never transcribed, or
+to re-run one with speaker diarization after setting a Hugging Face token.
+
 The Settings menu has a "Create desktop shortcuts" option (one `.lnk` per mode, each
 with its own icon, that launches straight into that mode without the menu prompt) and a
 "Set Hugging Face token" option that stores it DPAPI-encrypted for Call mode's speaker

@@ -92,6 +92,7 @@ if (modeArgument is not null)
     return await RunSelectedModeAsync(modeArgument.Value, engineRoot, scriptsRoot, pythonExecutable, ffmpegExecutable, recordingsBaseDirectory, settingsStore).ConfigureAwait(false);
 }
 
+const string reTranscribeChoice = "Re-transcribe a recording";
 const string settingsChoice = "Settings";
 const string exitChoice = "Exit";
 
@@ -101,11 +102,17 @@ while (true)
         new SelectionPrompt<string>()
             .Title("What do you want to do?")
             .AddChoiceGroup("Modes", ["Dictate", "Live", "Call"])
-            .AddChoices(settingsChoice, exitChoice));
+            .AddChoices(reTranscribeChoice, settingsChoice, exitChoice));
 
     if (selection == exitChoice)
     {
         return 0;
+    }
+
+    if (selection == reTranscribeChoice)
+    {
+        await RunReTranscribeAsync(engineRoot, scriptsRoot, pythonExecutable, ffmpegExecutable, recordingsBaseDirectory, settingsStore).ConfigureAwait(false);
+        continue;
     }
 
     if (selection == settingsChoice)
@@ -324,6 +331,110 @@ static async Task<int> RunCallAsync(string engineRoot, string scriptsRoot, strin
     else
     {
         AnsiConsole.MarkupLine("\n[yellow]Transcription did not finish -- the engine exited before writing a transcript (see its output above). The recording is still on disk; you can run transcribe.py against it directly.[/]");
+    }
+
+    return 0;
+}
+
+// Re-run transcribe.py against an already-recorded WAV picked from the recordings folder --
+// the recovery path for a call whose transcription never completed (e.g. one that tripped
+// the old 20-minute cap before v0.1.7), and a general "transcribe this file again" action.
+// Reuses CallRecordingSession's transcription half (same engine, events, no timeout) with no
+// ffmpeg recording step; see CallRecordingSession.TranscribeExistingAsync.
+static async Task<int> RunReTranscribeAsync(string engineRoot, string scriptsRoot, string pythonExecutable, string ffmpegExecutable, string recordingsBaseDirectory, ISettingsStore settingsStore)
+{
+    OrchestratorSettings orchestratorSettings = await settingsStore.LoadAsync().ConfigureAwait(false);
+    string recordingsDirectory = RepositoryLayout.RecordingsDirectory(recordingsBaseDirectory, orchestratorSettings.RecordingsDirectory);
+
+    List<FileInfo> recordings = [.. Directory.EnumerateFiles(recordingsDirectory, "*.wav")
+        .Select(path => new FileInfo(path))
+        .OrderByDescending(file => file.LastWriteTime)];
+
+    if (recordings.Count == 0)
+    {
+        AnsiConsole.MarkupLine($"[yellow]No recordings (*.wav) found in[/] {recordingsDirectory.EscapeMarkup()}\n");
+        return 0;
+    }
+
+    const string backChoice = "Back";
+    var labelToPath = new Dictionary<string, string>();
+    List<string> choices = [];
+    foreach (FileInfo file in recordings)
+    {
+        bool hasTranscript = File.Exists(Path.ChangeExtension(file.FullName, ".txt"));
+        string sizeMb = (file.Length / (1024.0 * 1024.0)).ToString("0.#");
+        string label = $"{file.Name}  ({sizeMb} MB, {file.LastWriteTime:yyyy-MM-dd HH:mm}){(hasTranscript ? "  -- transcript exists" : "  -- no transcript yet")}";
+        labelToPath[label] = file.FullName;
+        choices.Add(label);
+    }
+
+    choices.Add(backChoice);
+
+    string chosen = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+            .Title("Which recording do you want to (re-)transcribe?")
+            .PageSize(15)
+            .UseConverter(choice => choice.EscapeMarkup())
+            .AddChoices(choices));
+
+    if (chosen == backChoice)
+    {
+        return 0;
+    }
+
+    string audioPath = labelToPath[chosen];
+    string transcriptPath = Path.ChangeExtension(audioPath, ".txt");
+    if (File.Exists(transcriptPath))
+    {
+        AnsiConsole.MarkupLine($"[grey]An existing transcript will be overwritten:[/] {transcriptPath.EscapeMarkup()}");
+    }
+
+    string? hfToken = await ResolveHfTokenAsync(scriptsRoot).ConfigureAwait(false);
+    if (hfToken is null)
+    {
+        AnsiConsole.MarkupLine("[grey]No Hugging Face token found -- transcribing without speaker diarization. See README.md.[/]");
+    }
+
+    var session = new CallRecordingSession(
+        new RealProcessLauncher(),
+        ffmpegExecutable,
+        pythonExecutable,
+        RepositoryLayout.EngineScript(engineRoot, "transcribe.py"),
+        recordingsDirectory);
+
+    session.UnrecognizedEngineOutput += line =>
+        AnsiConsole.MarkupLine($"[yellow]Unrecognized engine output, ignored by the UI:[/] {line.EscapeMarkup()}");
+
+    AnsiConsole.MarkupLine($"[grey]Transcribing:[/] {audioPath.EscapeMarkup()}\n");
+
+    string? transcriptOutputPath = null;
+    using var cancellation = new CancellationTokenSource();
+    await AnsiConsole.Status().StartAsync("Transcribing...", async ctx =>
+    {
+        session.PhaseChanged += phase => ctx.Status(phase switch
+        {
+            "transcribing_full" => "Transcribing the recording...",
+            "diarizing_speakers" => "Identifying speakers...",
+            "finished" => "Finishing up...",
+            _ => phase,
+        });
+        // The engine's own stderr prose is the only sign a long transcription is still working
+        // rather than hung -- show its latest line as the live status, exactly like Call mode.
+        session.EngineStatusReceived += status => ctx.Status(status.EscapeMarkup());
+        transcriptOutputPath = await session.TranscribeExistingAsync(
+            audioPath,
+            new CallRecordingSettings(Microphone: string.Empty),
+            hfToken,
+            cancellation.Token).ConfigureAwait(false);
+    }).ConfigureAwait(false);
+
+    if (transcriptOutputPath is not null)
+    {
+        AnsiConsole.MarkupLine($"\n[green]Done:[/] {transcriptOutputPath.EscapeMarkup()}\n");
+    }
+    else
+    {
+        AnsiConsole.MarkupLine("\n[yellow]Transcription did not finish -- the engine exited before writing a transcript (see its output above). The recording is still on disk.[/]\n");
     }
 
     return 0;
