@@ -58,6 +58,34 @@ class TestMergeFramesToSpans:
         assert spans == [(0, 2)]
 
 
+class TestHasEnoughFrames:
+    """CTC forced alignment needs frames >= target tokens + adjacent repeats; align_words()
+    checks this up front so a too-short segment degrades to even word distribution quietly,
+    instead of letting torchaudio raise "targets length is too long for CTC"."""
+
+    def test_enough_when_frames_equal_tokens_without_repeats(self):
+        assert al._has_enough_frames(3, [1, 2, 3]) is True
+
+    def test_too_few_when_one_frame_short(self):
+        assert al._has_enough_frames(2, [1, 2, 3]) is False
+
+    def test_adjacent_repeat_needs_one_extra_frame(self):
+        # [1, 1, 2] has one adjacent repeat -> needs 3 + 1 = 4 frames.
+        assert al._has_enough_frames(3, [1, 1, 2]) is False
+        assert al._has_enough_frames(4, [1, 1, 2]) is True
+
+    def test_regression_short_segment_from_the_wild(self):
+        # The real failure this guards against: 15 target tokens, 2 adjacent repeats, only
+        # 16 emission frames ("log_probs length: 16, targets length: 15, repeats: 2").
+        # 15 + 2 = 17 > 16, so alignment cannot run.
+        ids = [1, 2, 3, 4, 5, 5, 6, 7, 8, 8, 9, 10, 11, 12, 13]
+        assert al._has_enough_frames(16, ids) is False
+        assert al._has_enough_frames(17, ids) is True
+
+    def test_empty_targets_always_fit(self):
+        assert al._has_enough_frames(0, []) is True
+
+
 class TestLoad:
     """_load()'s real branch (import transformers, download/load the actual wav2vec2
     weights) needs real network access or an already-populated HF cache -- out of scope

@@ -88,11 +88,18 @@ def align_words(samples: np.ndarray, text: str, language: str, sample_rate: int 
             expected_ids.extend(vocab[ch] for ch in w)
             word_slices.append(slice(start, len(expected_ids)))
 
+        num_frames = emissions.size(1)
+        if not _has_enough_frames(num_frames, expected_ids):
+            # Too short a segment to align this many characters: CTC needs at least as many
+            # emission frames as target tokens, plus one per adjacent repeat. torchaudio would
+            # otherwise raise ("targets length is too long for CTC") -- returning [] here lets
+            # the caller distribute the words evenly instead, without that alarming message.
+            return []
+
         targets = torch.tensor([expected_ids], dtype=torch.int32)
         aligned, scores = torchaudio.functional.forced_align(emissions, targets, blank=vocab.get("<pad>", 0))
         aligned = aligned[0]
 
-        num_frames = emissions.size(1)
         seconds_per_frame = samples.shape[0] / sample_rate / num_frames
 
         spans = _merge_frames_to_spans(aligned.tolist(), blank=vocab.get("<pad>", 0))
@@ -136,3 +143,16 @@ def _merge_frames_to_spans(aligned: list[int], blank: int) -> list[tuple[int, in
             i += 1
         spans.append((start, i))
     return spans
+
+
+def _has_enough_frames(num_frames: int, expected_ids: list[int]) -> bool:
+    """Whether CTC forced alignment can run at all for this many target tokens.
+
+    torchaudio's forced_align needs at least as many emission frames as target tokens, plus
+    one extra for every pair of adjacent identical tokens (a blank has to sit between two
+    repeats). A very short segment with many characters fails that bound, and torchaudio then
+    raises "targets length is too long for CTC". Checking it up front lets align_words() fall
+    back to even word distribution quietly, rather than provoke and catch that exception.
+    """
+    num_repeats = sum(1 for a, b in zip(expected_ids, expected_ids[1:]) if a == b)
+    return num_frames >= len(expected_ids) + num_repeats
