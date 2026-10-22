@@ -370,3 +370,21 @@ a human.
     `.txt` instead of being cut off, and that the spinner shows the engine's own progress
     lines (e.g. "Running speaker diarization ...") during the pass rather than a frozen
     label.
+23. **"Re-transcribe a recording" menu option (new), the recovery path for item 22's two
+    orphaned WAVs (`call_2026-10-21_*.wav`, recorded on the old `v0.1.5` binary that still
+    had the 20-minute cap, both left without a `.txt`).** Adds a top-level menu action that
+    lists the `*.wav` files in the recordings folder (newest first, each annotated with its
+    size and whether a transcript already exists) and runs `transcribe.py` against the chosen
+    one with no recording step -- `CallRecordingSession.TranscribeExistingAsync`, reusing the
+    same engine launch, event wiring, and no-timeout wait as a normal Call. Verified this
+    session: `dotnet build` and `dotnet test` (100 tests, 97.59% line coverage on the
+    hexagonal core) both clean, `dotnet format --verify-no-changes` clean. The six new
+    `TranscribeExisting*` tests cover the Application-layer behaviour (launches only the
+    engine and nothing else, passes the given file, sets `HF_TOKEN`, returns null on a
+    no-`finished` exit, surfaces stderr, rejects a blank path). **Not verified end to end:**
+    picking a real recording in the running app and watching it transcribe to a `.txt` --
+    the recordings-folder listing, the overwrite note when a `.txt` already exists, the
+    no-token "without speaker diarization" path, and the empty-folder message are all UI
+    (`Program.cs`, the composition root, excluded from coverage by design) and need a human
+    on a real install. The natural first run is recovering the two `call_2026-10-21_*.wav`
+    files above.

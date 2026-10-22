@@ -89,18 +89,33 @@ jobs:
       - name: Build (Release)
         run: dotnet build VoiceLocalCli.slnx -c Release --no-restore
 
-      - name: Test + coverage
+      - name: Test (full solution)
+        # All test projects, for pass/fail -- Architecture.Tests (the layering rules) runs
+        # here even though it contributes no coverage, so a broken dependency direction still
+        # fails CI. Coverage is collected separately below, on purpose.
+        run: dotnet test VoiceLocalCli.slnx -c Release --no-build
+
+      - name: Coverage (Application.Tests only)
         # Microsoft.Testing.Extensions.CodeCoverage (the Microsoft.Testing.Platform-native
         # collector), not coverlet.msbuild -- coverlet's /p:CollectCoverage hooks into
         # classic VSTest and silently breaks test discovery against an MTP-based xUnit v3
         # project ("Zero tests ran", exit code 5, no pointer to the real cause -- found by
         # running this exact command locally, not assumed). See tests/Cli.Tests/TESTING.md.
         #
-        # Passing the same --coverage-output filename for the whole solution merges both
-        # test projects' hit data into one report instead of two separate per-project
-        # files -- verified directly, not documented behavior to take on faith.
+        # Scoped to Application.Tests, NOT the whole solution, on purpose. Pointing the
+        # collector at the solution makes both test projects write to one --coverage-output,
+        # and that cross-assembly merge is non-deterministic: Architecture.Tests loads the
+        # Domain and Application assemblies by reflection without executing their lines, and
+        # when its all-zero-hit report is the one that wins the merge the whole report comes
+        # back line-rate=0 and fails the gate (seen 2026-10-22 on both a main push and a PR,
+        # while other runs of the same commits read 97%+). Application.Tests is the only suite
+        # that exercises the measured Domain/Application code, so scoping to it is both the
+        # true number and deterministic -- the lines-valid denominator is unchanged either way,
+        # since coverage.config's excludes (Infrastructure, the Ui.Console composition root)
+        # are what decide it.
         run: >
-          dotnet test VoiceLocalCli.slnx -c Release --no-build
+          dotnet test tests/Cli.Tests/VoiceLocalCli.Application.Tests/VoiceLocalCli.Application.Tests.csproj
+          -c Release --no-build
           --coverage --coverage-output-format cobertura
           --coverage-output coverage.cobertura.xml
           --coverage-settings tests/Cli.Tests/coverage.config

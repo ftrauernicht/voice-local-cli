@@ -12,6 +12,9 @@ namespace VoiceLocalCli.Application.UseCases;
 /// with Python's <c>wave</c> module, which needs a correct header) does transcribe.py run
 /// once against the finished file, optionally with speaker diarization if an HF token is
 /// supplied.
+/// The same transcription half is reused on its own by <see cref="TranscribeExistingAsync"/>
+/// to (re-)transcribe a recording that already exists on disk, with no recording step of its
+/// own -- the path for recovering a transcript that was never written.
 /// </summary>
 public sealed class CallRecordingSession(
     IProcessLauncher launcher,
@@ -101,8 +104,26 @@ public sealed class CallRecordingSession(
         }
 
         await ChildProcessStopSequence.SignalThenKillIfNeededAsync(_ffmpeg, "q", FfmpegStopTimeout, cancellationToken).ConfigureAwait(false);
+        return await TranscribeFileAsync(_audioPath, _settings, hfToken, cancellationToken).ConfigureAwait(false);
+    }
 
-        IReadOnlyList<string> engineArgs = CallEngineArguments.For(_engineScriptPath, _audioPath, _settings);
+    /// <summary>Transcribes an already-recorded WAV straight through transcribe.py, with no
+    /// recording step of its own -- the path for re-running a transcription that was never
+    /// written (e.g. a call that tripped the old timeout) or producing a fresh transcript
+    /// from any existing recording. Same engine, events, and no-timeout wait as
+    /// <see cref="StopAndTranscribeAsync"/>; returns the path transcribe.py wrote the
+    /// transcript to, or null if the engine exited without a "finished" event. Never touches
+    /// ffmpeg, so an instance used only for this records nothing.</summary>
+    public Task<string?> TranscribeExistingAsync(string audioPath, CallRecordingSettings settings, string? hfToken, CancellationToken cancellationToken = default) =>
+        TranscribeFileAsync(audioPath, settings, hfToken, cancellationToken);
+
+    private async Task<string?> TranscribeFileAsync(string audioPath, CallRecordingSettings settings, string? hfToken, CancellationToken cancellationToken)
+    {
+        // Reset per run so a reused instance can't report a stale path from a previous one --
+        // the "finished" event below is the only thing that ever sets it.
+        _transcriptOutputPath = null;
+
+        IReadOnlyList<string> engineArgs = CallEngineArguments.For(_engineScriptPath, audioPath, settings);
         IReadOnlyDictionary<string, string>? environmentVariables = string.IsNullOrEmpty(hfToken)
             ? null
             : new Dictionary<string, string> { ["HF_TOKEN"] = hfToken };

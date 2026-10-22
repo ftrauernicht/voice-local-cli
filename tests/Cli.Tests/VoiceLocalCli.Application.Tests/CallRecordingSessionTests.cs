@@ -211,4 +211,97 @@ public sealed class CallRecordingSessionTests
         Assert.Null(outputPath);
         Assert.Empty(launcher.StartCalls);
     }
+
+    [Fact]
+    public async Task TranscribeExistingLaunchesTranscriptionAgainstTheGivenFileWithoutRecording()
+    {
+        var launcher = new FakeProcessLauncher();
+        var transcription = new FakeChildProcess();
+        transcription.OutputLinesToEmitBeforeExit.Add("""@@STATE:{"name": "finished", "output": "C:\\recordings\\call_1.txt"}""");
+        launcher.EnqueueProcess(transcription);
+        var session = CreateSession(launcher);
+
+        string? outputPath = await session.TranscribeExistingAsync(
+            @"C:\recordings\call_1.wav",
+            new CallRecordingSettings(Microphone: string.Empty),
+            hfToken: null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(@"C:\recordings\call_1.txt", outputPath);
+        Assert.Single(launcher.StartCalls); // no ffmpeg -- transcription only, nothing recorded
+        Assert.Equal(@"C:\venv\python.exe", launcher.StartCalls[0].FileName);
+        Assert.Contains(@"C:\recordings\call_1.wav", launcher.StartCalls[0].Arguments);
+    }
+
+    [Fact]
+    public async Task TranscribeExistingSetsHfTokenEnvironmentVariableWhenATokenIsSupplied()
+    {
+        var launcher = new FakeProcessLauncher();
+        launcher.EnqueueProcess(new FakeChildProcess());
+        var session = CreateSession(launcher);
+
+        await session.TranscribeExistingAsync(
+            @"C:\recordings\call_1.wav",
+            new CallRecordingSettings(Microphone: string.Empty),
+            hfToken: "hf_secret",
+            TestContext.Current.CancellationToken);
+
+        IReadOnlyDictionary<string, string>? env = launcher.StartCalls[0].EnvironmentVariables;
+        Assert.NotNull(env);
+        Assert.Equal("hf_secret", env!["HF_TOKEN"]);
+    }
+
+    [Fact]
+    public async Task TranscribeExistingReturnsNullWhenTheEngineExitsWithoutFinishing()
+    {
+        var launcher = new FakeProcessLauncher();
+        launcher.EnqueueProcess(new FakeChildProcess()); // exits, but emits no "finished" event
+        var session = CreateSession(launcher);
+
+        string? outputPath = await session.TranscribeExistingAsync(
+            @"C:\recordings\call_1.wav",
+            new CallRecordingSettings(Microphone: string.Empty),
+            hfToken: null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Null(outputPath);
+    }
+
+    [Fact]
+    public async Task TranscribeExistingSurfacesTheEnginesStderrProseWithAnsiCodesStripped()
+    {
+        var launcher = new FakeProcessLauncher();
+        var transcription = new FakeChildProcess();
+        transcription.ErrorLinesToEmitBeforeExit.Add("\u001b[96mRunning speaker diarization ...\u001b[0m");
+        launcher.EnqueueProcess(transcription);
+        var session = CreateSession(launcher);
+        List<string> engineStatus = [];
+        session.EngineStatusReceived += status => engineStatus.Add(status);
+
+        await session.TranscribeExistingAsync(
+            @"C:\recordings\call_1.wav",
+            new CallRecordingSettings(Microphone: string.Empty),
+            hfToken: null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains("Running speaker diarization ...", engineStatus);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task TranscribeExistingRejectsABlankAudioPathWithoutStartingAnything(string audioPath)
+    {
+        var launcher = new FakeProcessLauncher();
+        var session = CreateSession(launcher);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => session.TranscribeExistingAsync(
+                audioPath,
+                new CallRecordingSettings(Microphone: string.Empty),
+                hfToken: null,
+                TestContext.Current.CancellationToken));
+
+        Assert.Empty(launcher.StartCalls);
+    }
 }
