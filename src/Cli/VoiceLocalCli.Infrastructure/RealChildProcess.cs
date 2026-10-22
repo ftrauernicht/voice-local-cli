@@ -93,5 +93,8 @@ internal sealed class RealChildProcess : IChildProcess
         }
     }
 
+    public Task WaitForExitAsync(CancellationToken cancellationToken) =>
+        _process.WaitForExitAsync(cancellationToken);
+
     public void Kill() => _process.Kill(entireProcessTree: true);
 }

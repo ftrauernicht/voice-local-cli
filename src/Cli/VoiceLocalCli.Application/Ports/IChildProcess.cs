@@ -31,6 +31,12 @@ public interface IChildProcess
     /// Returns true if it exited within that time.</summary>
     Task<bool> WaitForExitAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
 
+    /// <summary>Waits for the process to exit with no timeout of its own -- for a batch job
+    /// whose runtime scales with its input (Call-mode transcription over a long recording)
+    /// and so must not be cut off by an arbitrary wall-clock cap. Only
+    /// <paramref name="cancellationToken"/> ends the wait early.</summary>
+    Task WaitForExitAsync(CancellationToken cancellationToken);
+
     /// <summary>Hard-kills the process and, where the adapter supports it, its full
     /// process tree. The fallback path when a graceful stop doesn't complete in time.</summary>
     void Kill();

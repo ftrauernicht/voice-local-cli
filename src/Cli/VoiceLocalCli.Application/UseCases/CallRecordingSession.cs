@@ -22,11 +22,6 @@ public sealed class CallRecordingSession(
 {
     private static readonly TimeSpan FfmpegStopTimeout = TimeSpan.FromSeconds(3);
 
-    // Full-call transcription plus diarization can legitimately take minutes for a long
-    // recording -- generous on purpose, this is not the few-seconds turnaround the other
-    // two sessions' engine timeouts assume.
-    private static readonly TimeSpan TranscriptionTimeout = TimeSpan.FromMinutes(20);
-
     private readonly IProcessLauncher _launcher = launcher;
     private readonly string _ffmpegPath = ffmpegPath;
     private readonly string _pythonPath = pythonPath;
@@ -49,6 +44,12 @@ public sealed class CallRecordingSession(
     public event Action<string>? PhaseChanged;
 
     public event Action<string>? UnrecognizedEngineOutput;
+
+    /// <summary>Raised for the engine's own stderr prose, ANSI codes stripped -- so the long
+    /// transcription (plus diarization) pass shows what it's doing instead of a silent
+    /// spinner, and a real failure's error line is surfaced rather than swallowed. Mirrors
+    /// <see cref="LiveTranscriptSession.EngineStatusReceived"/>.</summary>
+    public event Action<string>? EngineStatusReceived;
 
     /// <summary>Starts recording only -- no transcription yet. Returns the path ffmpeg is
     /// writing to.</summary>
@@ -87,10 +88,11 @@ public sealed class CallRecordingSession(
     /// <summary>Stops recording, then runs the full transcription (plus speaker diarization
     /// if <paramref name="hfToken"/> is non-empty) against the finished recording. Returns
     /// the path transcribe.py wrote the transcript to -- null if recording was never
-    /// started, or if transcription didn't report a "finished" event before
-    /// <see cref="TranscriptionTimeout"/> (the process is killed in that case; the
-    /// transcript, if any was already written, may still be on disk even though this
-    /// returns null).</summary>
+    /// started, or if the engine exited without reporting a "finished" event (a crash or a
+    /// non-zero exit; its stderr is surfaced via <see cref="EngineStatusReceived"/>). There
+    /// is deliberately no transcription timeout: a long call's transcription scales with the
+    /// recording length, so a fixed cap would kill it mid-pass (see
+    /// <see cref="ChildProcessStopSequence.WaitUntilExitOrKillOnCancelAsync"/>).</summary>
     public async Task<string?> StopAndTranscribeAsync(string? hfToken, CancellationToken cancellationToken = default)
     {
         if (_ffmpeg is null || _audioPath is null || _settings is null)
@@ -107,8 +109,9 @@ public sealed class CallRecordingSession(
 
         _transcription = _launcher.Start(_pythonPath, engineArgs, environmentVariables);
         _transcription.OutputLineReceived += HandleTranscriptionOutputLine;
+        _transcription.ErrorLineReceived += HandleTranscriptionErrorLine;
 
-        await ChildProcessStopSequence.WaitThenKillIfNeededAsync(_transcription, TranscriptionTimeout, cancellationToken).ConfigureAwait(false);
+        await ChildProcessStopSequence.WaitUntilExitOrKillOnCancelAsync(_transcription, cancellationToken).ConfigureAwait(false);
         return _transcriptOutputPath;
     }
 
@@ -129,6 +132,15 @@ public sealed class CallRecordingSession(
             case UnrecognizedEngineLine unrecognized:
                 UnrecognizedEngineOutput?.Invoke(unrecognized.RawLine);
                 break;
+        }
+    }
+
+    private void HandleTranscriptionErrorLine(string rawLine)
+    {
+        string? status = EngineStatusLineFormatter.Format(rawLine);
+        if (status is not null)
+        {
+            EngineStatusReceived?.Invoke(status);
         }
     }
 }
